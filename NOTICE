@@ -1,0 +1,21 @@
+juanmisab/e2ee-runtime
+
+Copyright (C) 2026 juanmisab.
+
+This initial scaffold does not vendor third-party crypto source.
+
+Planned upstream review/import candidates:
+
+- getmaapp/signal-wasm, AGPL-3.0-only
+  https://github.com/getmaapp/signal-wasm
+- signalapp/libsignal, AGPL-3.0
+  https://github.com/signalapp/libsignal
+
+If getmaapp/signal-wasm or libsignal source is copied, forked, adapted, linked,
+or built into this runtime, preserve upstream copyright notices, record the
+exact upstream revision, mark local modifications with dates, and keep the full
+Corresponding Source available with the distributed JS/WASM artifact.
+
+Signal Protocol compatibility does not imply affiliation with Signal Messenger
+LLC, Signal Foundation, Signal Technology Foundation, or the Signal app.
+

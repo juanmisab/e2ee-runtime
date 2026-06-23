@@ -1,0 +1,19 @@
+{
+  "name": "@juanmisab/e2ee-runtime-root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Public browser E2EE Worker/WASM runtime scaffold.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/juanmisab/e2ee-runtime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/juanmisab/e2ee-runtime/issues"
+  },
+  "scripts": {
+    "check": "node scripts/check-public-boundary.mjs"
+  }
+}
+
