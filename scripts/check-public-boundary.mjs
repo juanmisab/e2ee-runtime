@@ -12,9 +12,12 @@ const requiredFiles = [
   "README.md",
   "package.json",
   "docs/branching.md",
+  "docs/build-evidence-2026-06-23.md",
   "docs/distribution-mode.md",
+  "docs/import-log.md",
   "docs/license-plan.md",
   "docs/source-intake-manifest.md",
+  "third_party/getmaapp-signal-wasm/UPSTREAM.md",
 ];
 
 const requiredText = {
@@ -29,10 +32,21 @@ const requiredText = {
     "\"license\": \"AGPL-3.0-only\"",
     "https://github.com/juanmisab/e2ee-runtime.git",
   ],
+  "LICENSE": [
+    "GNU AFFERO GENERAL PUBLIC LICENSE",
+    "Version 3, 19 November 2007",
+  ],
   "docs/branching.md": [
     "codex/agpl-worker-runtime-foundation",
     "checkpoint/comms-web-worker-artifact-boundary-20260623",
     "0a989dfa11",
+  ],
+  "docs/build-evidence-2026-06-23.md": [
+    "third_party/getmaapp-signal-wasm",
+    "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
+    "wasm-pack build --target web --out-dir pkg",
+    "signal_wasm_bg.wasm",
+    "e0b125b21d0c663b8d74021fabb63a419ee3a1b5c1dd2a314d44b129b50063bd",
   ],
   "docs/distribution-mode.md": [
     "web_worker_url_artifact",
@@ -44,14 +58,25 @@ const requiredText = {
     "AGPL-3.0-only",
     "getmaapp/signal-wasm",
     "signalapp/libsignal",
-    "Before Importing Getmaapp Source",
+    "Getmaapp Source Import",
+    "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
   ],
   "docs/source-intake-manifest.md": [
     "Port Now",
     "Sanitize Then Port",
     "Review Only",
-    "Upstream Import After License Packet",
+    "Upstream Import",
     "Do Not Export",
+  ],
+  "docs/import-log.md": [
+    "third_party/getmaapp-signal-wasm",
+    "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
+    "Local modifications:",
+  ],
+  "third_party/getmaapp-signal-wasm/UPSTREAM.md": [
+    "https://github.com/getmaapp/signal-wasm",
+    "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
+    "AGPL-3.0-only",
   ],
 };
 
@@ -108,7 +133,7 @@ async function scanSourceFiles(absolutePath, relativePath) {
 
   if (info.isDirectory()) {
     const baseName = path.basename(absolutePath);
-    if ([".git", "node_modules", "dist", "target", "pkg"].includes(baseName)) {
+  if ([".git", "node_modules", "dist", "target", "pkg", "third_party"].includes(baseName)) {
       return;
     }
     const entries = await readdir(absolutePath, { withFileTypes: true });

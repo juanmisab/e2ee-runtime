@@ -60,14 +60,14 @@ These files are useful evidence but should not be copied into the public repo:
 | `codex/comms-browser-alpha-clean` | `docs/comms/39-browser-crypto-review-disposition-ledger-getmaapp-signal-wasm-2026-06-23.*` | Why private product import was rejected. |
 | `codex/comms-browser-alpha-clean` | `docs/comms/46-browser-crypto-conformance-evidence-getmaapp-signal-wasm-2026-06-23.*` | Conformance evidence shape. |
 
-## Upstream Import After License Packet
+## Upstream Import
 
-The Getmaapp source may be imported only after `docs/license-plan.md` is complete
-and the repo has full AGPL text plus NOTICE.
+The Getmaapp source has been imported after adding the full AGPL license text
+and upstream NOTICE tracking.
 
 | Upstream | Destination | Rule |
 |---|---|---|
-| `https://github.com/getmaapp/signal-wasm` | `third_party/getmaapp-signal-wasm/` | Preserve upstream source and notices. |
+| `https://github.com/getmaapp/signal-wasm` | `third_party/getmaapp-signal-wasm/` | Imported commit `3a5293905e7eacfad42b0b324665849bdd4c9cdf`; preserve upstream source and notices. |
 | selected local wrapper code | `crates/e2ee-wasm/` | Mark modifications and keep build scripts. |
 
 ## Do Not Export
@@ -85,4 +85,3 @@ Never move these private-consumer surfaces into this repo:
 - product-specific global names
 - product-specific engine ids
 - mobile/Expo runtime packaging for the AGPL route
-

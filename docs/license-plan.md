@@ -8,9 +8,8 @@ License target:
 AGPL-3.0-only
 ```
 
-The initial scaffold has no vendored third-party crypto source. It is still
-marked AGPL-3.0-only so the repo starts in the same license family as the
-planned browser runtime path.
+This repo now vendors `getmaapp/signal-wasm` under `third_party/` for the public
+AGPL runtime path.
 
 ## Current Source Facts
 
@@ -29,14 +28,24 @@ Primary references:
 - https://raw.githubusercontent.com/signalapp/libsignal/main/LICENSE
 - https://www.gnu.org/licenses/agpl-3.0.en.html
 
-## Before Importing Getmaapp Source
+## Getmaapp Source Import
 
-Required:
+Imported:
 
-- create full `LICENSE` with complete AGPL-3.0-only text
-- keep `NOTICE` with upstream attribution
-- record upstream repo URL and commit SHA
-- preserve upstream copyright and license notices
+- source path: `third_party/getmaapp-signal-wasm`
+- upstream commit: `3a5293905e7eacfad42b0b324665849bdd4c9cdf`
+- import log: `docs/import-log.md`
+- upstream record: `third_party/getmaapp-signal-wasm/UPSTREAM.md`
+
+Completed:
+
+- full `LICENSE` with complete AGPL-3.0-only text
+- `NOTICE` with upstream attribution
+- upstream repo URL and commit SHA recorded
+- upstream copyright and license notices preserved
+
+Still required before a runtime artifact release:
+
 - mark local modifications with date
 - keep source tree, lockfiles, and build scripts together
 - generate `SOURCE.txt` for each artifact version
@@ -63,4 +72,3 @@ Future public packages may be:
 ```
 
 Do not publish packages until the source and license packet is complete.
-
