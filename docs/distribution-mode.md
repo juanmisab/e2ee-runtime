@@ -44,6 +44,7 @@ Current pre-alpha Worker operations:
 - `generateIdentityKeyPair`
 - `createDeviceMaterial`
 - `exportPrekeyBundle`
+- `encryptEnvelope`
 
 Forbidden private-app use:
 

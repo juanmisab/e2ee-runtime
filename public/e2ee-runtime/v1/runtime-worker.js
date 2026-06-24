@@ -1,9 +1,14 @@
 import initWasm, {
   WasmIdentityKeyPair,
+  WasmInMemIdentityKeyStore,
   WasmInMemKyberPreKeyStore,
   WasmInMemPreKeyStore,
+  WasmInMemSessionStore,
   WasmInMemSignedPreKeyStore,
   WasmPrivateKey,
+  WasmProtocolAddress,
+  WasmPublicKey,
+  encryptMessage,
   generateKyberPreKey,
   generatePreKeys,
   generateRegistrationId,
@@ -13,12 +18,13 @@ import initWasm, {
   message_type_pre_key,
   message_type_sender_key,
   message_type_signal,
+  processPreKeyBundle,
   uuid_to_string,
 } from "./signal_wasm.js";
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.2",
+  runtimeVersion: "0.1.0-prealpha.3",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -74,6 +80,8 @@ async function handleRequest(message) {
         return ok(requestId, await createDeviceMaterial(message.payload));
       case "exportPrekeyBundle":
         return ok(requestId, exportPrekeyBundle(message.payload));
+      case "encryptEnvelope":
+        return ok(requestId, await encryptEnvelope(message.payload));
       default:
         throw new Error(`Unsupported runtime op: ${message.op}`);
     }
@@ -216,6 +224,106 @@ function exportPrekeyBundle(payload) {
   return createPrekeyBundleFromMaterial(material);
 }
 
+async function encryptEnvelope(payload) {
+  const input = assertObject(payload, "payload");
+  const senderMaterial = resolveDeviceMaterial(
+    input.senderMaterial ?? input.localDevice ?? input.material,
+  );
+  const recipientPrekeyBundle = assertObject(
+    input.recipientPrekeyBundle ?? input.prekeyBundle ?? input.recipientBundle,
+    "recipientPrekeyBundle",
+  );
+  const plaintext = resolvePlaintextBytes(input);
+  const senderAddressName = optionalString(input.senderAddressName) ?? "sender";
+  const recipientAddressName = optionalString(input.recipientAddressName) ?? "recipient";
+  const recipientDeviceId = optionalString(input.recipientDeviceId) ?? recipientAddressName;
+  const envelopeType = optionalString(input.envelopeType) ?? "message";
+  const senderState = await createSenderRuntimeState(senderMaterial);
+  const senderAddress = new WasmProtocolAddress(
+    senderAddressName,
+    assertInteger(senderMaterial.signalDeviceId, "senderMaterial.signalDeviceId", 1, 127),
+  );
+  const recipientAddress = new WasmProtocolAddress(
+    recipientAddressName,
+    assertInteger(recipientPrekeyBundle.signalDeviceId, "recipientPrekeyBundle.signalDeviceId", 1, 127),
+  );
+  const recipientIdentityKey = WasmPublicKey.deserialize(
+    base64ToBytes(assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic")),
+  );
+  const signedPrekey = assertObject(recipientPrekeyBundle.signedPrekey, "recipientPrekeyBundle.signedPrekey");
+  const signedPrekeyPublic = WasmPublicKey.deserialize(
+    base64ToBytes(assertString(signedPrekey.publicKey, "recipientPrekeyBundle.signedPrekey.publicKey")),
+  );
+  const oneTimePrekey = firstOptionalPrekey(
+    recipientPrekeyBundle.oneTimePrekeys,
+    "recipientPrekeyBundle.oneTimePrekeys",
+  );
+  const kyberPrekey = firstRequiredPrekey(
+    recipientPrekeyBundle.kyberPrekeys,
+    "recipientPrekeyBundle.kyberPrekeys",
+  );
+  let ciphertext;
+
+  try {
+    await processPreKeyBundle(
+      recipientAddress,
+      senderAddress,
+      assertInteger(recipientPrekeyBundle.registrationId, "recipientPrekeyBundle.registrationId", 1, 0x7fffffff),
+      recipientIdentityKey,
+      assertInteger(signedPrekey.prekeyId, "recipientPrekeyBundle.signedPrekey.prekeyId", 1, 0x00ffffff),
+      signedPrekeyPublic,
+      base64ToBytes(assertString(signedPrekey.signature, "recipientPrekeyBundle.signedPrekey.signature")),
+      oneTimePrekey?.prekeyId,
+      oneTimePrekey?.publicKeyBytes,
+      kyberPrekey.prekeyId,
+      kyberPrekey.publicKeyBytes,
+      kyberPrekey.signatureBytes,
+      senderState.sessionStore,
+      senderState.identityStore,
+    );
+
+    ciphertext = await encryptMessage(
+      plaintext,
+      recipientAddress,
+      senderAddress,
+      senderState.sessionStore,
+      senderState.identityStore,
+    );
+    const sessionRecord = await senderState.sessionStore.export_session(recipientAddress);
+    const updatedSenderMaterial = updateSenderMaterialAfterEncrypt(
+      senderMaterial,
+      {
+        recipientDeviceId,
+        addressName: recipientAddressName,
+        signalDeviceId: recipientAddress.deviceId,
+        sessionRecordBase64: sessionRecord ? bytesToBase64(sessionRecord) : null,
+        recipientIdentityKeyPublic: assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic"),
+      },
+    );
+    const ciphertextBase64 = bytesToBase64(ciphertext.body);
+
+    return {
+      recipientDeviceId,
+      envelopeType,
+      ciphertext: ciphertextBase64,
+      ciphertextBase64,
+      signalCiphertextType: ciphertext.message_type,
+      senderAddress: senderAddress.name,
+      recipientAddress: recipientAddress.name,
+      recipientProtocolDeviceId: recipientAddress.deviceId,
+      prekeyBundleProcessed: true,
+      updatedSenderMaterial,
+    };
+  } finally {
+    ciphertext?.free();
+    signedPrekeyPublic.free();
+    recipientIdentityKey.free();
+    recipientAddress.free();
+    senderAddress.free();
+    senderState.free();
+  }
+}
+
 function createPrekeyBundleFromMaterial(material) {
   assertObject(material, "device material");
   const signedPrekey = assertObject(material.signedPrekey, "signedPrekey");
@@ -285,6 +393,186 @@ function resolveDeviceMaterial(payload) {
   return input.material ?? input.deviceMaterial ?? input;
 }
 
+async function createSenderRuntimeState(senderMaterial) {
+  assertObject(senderMaterial, "senderMaterial");
+  const privateKeyMaterial = assertObject(
+    senderMaterial.privateKeyMaterial,
+    "senderMaterial.privateKeyMaterial",
+  );
+  const identity = restoreIdentityKeyPair(senderMaterial, privateKeyMaterial);
+  const identityStore = new WasmInMemIdentityKeyStore(
+    identity,
+    assertInteger(senderMaterial.registrationId, "senderMaterial.registrationId", 1, 0x7fffffff),
+  );
+  const sessionStore = new WasmInMemSessionStore();
+  const importedAddresses = [];
+
+  try {
+    const sessionRecords = assertOptionalArray(
+      privateKeyMaterial.sessionRecords,
+      "senderMaterial.privateKeyMaterial.sessionRecords",
+    );
+    for (const [index, recordValue] of sessionRecords.entries()) {
+      const record = assertObject(recordValue, `sessionRecords[${index}]`);
+      const address = new WasmProtocolAddress(
+        assertString(record.addressName, `sessionRecords[${index}].addressName`),
+        assertInteger(record.deviceId, `sessionRecords[${index}].deviceId`, 1, 127),
+      );
+      importedAddresses.push(address);
+      await sessionStore.import_session(
+        address,
+        base64ToBytes(assertString(record.record, `sessionRecords[${index}].record`)),
+      );
+    }
+  } catch (error) {
+    identityStore.free();
+    sessionStore.free();
+    identity.free();
+    for (const address of importedAddresses) {
+      address.free();
+    }
+    throw error;
+  }
+
+  return {
+    identity,
+    identityStore,
+    sessionStore,
+    free() {
+      for (const address of importedAddresses) {
+        address.free();
+      }
+      sessionStore.free();
+      identityStore.free();
+      identity.free();
+    },
+  };
+}
+
+function restoreIdentityKeyPair(senderMaterial, privateKeyMaterial) {
+  const identityRecord = optionalString(privateKeyMaterial.identityKeyPairRecord);
+  if (identityRecord) {
+    return WasmIdentityKeyPair.deserialize(base64ToBytes(identityRecord));
+  }
+  const publicKey = WasmPublicKey.deserialize(
+    base64ToBytes(assertString(senderMaterial.identityKeyPublic, "senderMaterial.identityKeyPublic")),
+  );
+  const privateKey = WasmPrivateKey.deserialize(
+    base64ToBytes(assertString(senderMaterial.identityKeyPrivate, "senderMaterial.identityKeyPrivate")),
+  );
+  try {
+    return new WasmIdentityKeyPair(publicKey, privateKey);
+  } finally {
+    publicKey.free();
+    privateKey.free();
+  }
+}
+
+function updateSenderMaterialAfterEncrypt(senderMaterial, update) {
+  const updatedMaterial = cloneJson(senderMaterial);
+  const privateKeyMaterial = {
+    ...(isObject(updatedMaterial.privateKeyMaterial)
+      ? updatedMaterial.privateKeyMaterial
+      : {}),
+  };
+  privateKeyMaterial.sessionRecords = upsertAddressedRecord(
+    privateKeyMaterial.sessionRecords,
+    {
+      addressName: update.addressName,
+      deviceId: update.signalDeviceId,
+      record: update.sessionRecordBase64,
+    },
+    "record",
+  );
+  privateKeyMaterial.trustedIdentities = upsertAddressedRecord(
+    privateKeyMaterial.trustedIdentities,
+    {
+      addressName: update.addressName,
+      deviceId: update.signalDeviceId,
+      publicKey: update.recipientIdentityKeyPublic,
+    },
+    "publicKey",
+  );
+  privateKeyMaterial.knownRecipientDevices = upsertRecipientDeviceRecord(
+    privateKeyMaterial.knownRecipientDevices,
+    {
+      recipientDeviceId: update.recipientDeviceId,
+      addressName: update.addressName,
+      signalDeviceId: update.signalDeviceId,
+    },
+  );
+  updatedMaterial.privateKeyMaterial = privateKeyMaterial;
+  return updatedMaterial;
+}
+
+function upsertAddressedRecord(records, nextRecord, valueKey) {
+  if (!nextRecord[valueKey]) return Array.isArray(records) ? records : [];
+  const nextRecords = Array.isArray(records) ? [...records] : [];
+  const existingIndex = nextRecords.findIndex(
+    (record) =>
+      isObject(record) &&
+      record.addressName === nextRecord.addressName &&
+      record.deviceId === nextRecord.deviceId,
+  );
+  if (existingIndex >= 0) {
+    nextRecords[existingIndex] = nextRecord;
+    return nextRecords;
+  }
+  nextRecords.push(nextRecord);
+  return nextRecords;
+}
+
+function upsertRecipientDeviceRecord(records, nextRecord) {
+  const nextRecords = Array.isArray(records) ? [...records] : [];
+  const existingIndex = nextRecords.findIndex(
+    (record) =>
+      isObject(record) &&
+      record.recipientDeviceId === nextRecord.recipientDeviceId,
+  );
+  if (existingIndex >= 0) {
+    nextRecords[existingIndex] = nextRecord;
+    return nextRecords;
+  }
+  nextRecords.push(nextRecord);
+  return nextRecords;
+}
+
+function firstOptionalPrekey(value, label) {
+  const prekeys = assertOptionalArray(value, label);
+  if (prekeys.length === 0) return null;
+  const prekey = assertObject(prekeys[0], `${label}[0]`);
+  return {
+    prekeyId: assertInteger(prekey.prekeyId, `${label}[0].prekeyId`, 1, 0x00ffffff),
+    publicKeyBytes: base64ToBytes(assertString(prekey.publicKey, `${label}[0].publicKey`)),
+  };
+}
+
+function firstRequiredPrekey(value, label) {
+  const prekey = firstOptionalPrekey(value, label);
+  if (!prekey) {
+    throw new Error(`${label} must contain at least one prekey`);
+  }
+  const record = assertObject(value[0], `${label}[0]`);
+  return {
+    ...prekey,
+    signatureBytes: base64ToBytes(assertString(record.signature, `${label}[0].signature`)),
+  };
+}
+
+function resolvePlaintextBytes(input) {
+  if (typeof input.plaintextBase64 === "string") {
+    return base64ToBytes(input.plaintextBase64);
+  }
+  if (typeof input.plaintext === "string") {
+    return new TextEncoder().encode(input.plaintext);
+  }
+  throw new Error("encryptEnvelope payload requires plaintextBase64 or plaintext");
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function uuidResult(bytes) {
   return {
     uuid: uuid_to_string(bytes),
@@ -313,6 +601,10 @@ function assertString(value, label) {
   return value;
 }
 
+function optionalString(value) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 function assertObject(value, label) {
   if (!isObject(value)) {
     throw new Error(`${label} must be an object`);
@@ -334,6 +626,15 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function isObject(value) {

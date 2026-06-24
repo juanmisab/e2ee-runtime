@@ -121,6 +121,21 @@ createDeviceMaterial: generated registration id, signal device id 7,
 exportPrekeyBundle: returned a public bundle matching the generated material.
 ```
 
+Packet B Worker operation added after Packet A:
+
+- `encryptEnvelope`
+
+Browser Worker smoke:
+
+```text
+Alice createDeviceMaterial: signal device id 1.
+Bob createDeviceMaterial: signal device id 7.
+Bob exportPrekeyBundle: public bundle exported.
+Alice encryptEnvelope: processed Bob prekey bundle and produced Signal
+ciphertext type 3, one sender session record, one trusted identity, and one
+known-recipient device mapping.
+```
+
 ## Next Step
 
 Connect a private web consumer only through the Worker URL boundary:

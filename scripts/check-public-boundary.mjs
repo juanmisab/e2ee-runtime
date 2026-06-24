@@ -33,7 +33,7 @@ const requiredText = {
     "pre-alpha AGPL runtime artifact",
     "/e2ee-runtime/v1/runtime-worker.js",
     "JSON `postMessage`",
-    "Packet A operations",
+    "Packet A/B operations",
     "not affiliated",
   ],
   "package.json": [
@@ -59,6 +59,8 @@ const requiredText = {
     "node scripts/stage-web-artifact.mjs",
     "createDeviceMaterial",
     "exportPrekeyBundle",
+    "encryptEnvelope",
+    "ciphertext type 3",
   ],
   "docs/distribution-mode.md": [
     "web_worker_url_artifact",
@@ -66,6 +68,7 @@ const requiredText = {
     "new Worker",
     "createDeviceMaterial",
     "exportPrekeyBundle",
+    "encryptEnvelope",
     "expo_agpl_runtime_blocked_until_legal_review",
   ],
   "docs/license-plan.md": [
@@ -109,6 +112,7 @@ const requiredText = {
     "generateIdentityKeyPair",
     "createDeviceMaterial",
     "exportPrekeyBundle",
+    "encryptEnvelope",
   ],
   "public/e2ee-runtime/v1/signal_wasm.js": [
     "signal_wasm_bg.wasm",
