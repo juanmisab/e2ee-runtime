@@ -32,6 +32,11 @@ Consumer boundary:
 Private apps must talk to this runtime through JSON postMessage calls to the
 Worker artifact. Do not import this runtime as a private app npm dependency.
 
+Recovery Protocol v1:
+The Worker exposes encrypted device-transfer and encrypted recovery-bundle JSON
+operations. Product auth, passkey step-up, QR ceremonies, and storage policy are
+consumer responsibilities and are not implemented in this public runtime.
+
 Affiliation:
 This project may become Signal Protocol-compatible, but it is not affiliated
 with Signal Messenger LLC, Signal Foundation, Signal Technology Foundation, or

@@ -48,6 +48,10 @@ Current pre-alpha Worker operations:
 - `encryptKnownSessionEnvelope`
 - `decryptEnvelope`
 - `exportDeviceState`
+- `exportDeviceTransferBundle`
+- `importDeviceTransferBundle`
+- `exportEncryptedRecoveryBundle`
+- `importEncryptedRecoveryBundle`
 
 Forbidden private-app use:
 

@@ -22,7 +22,10 @@ direct npm import unless a later legal review explicitly approves that mode.
 
 Current Packet A/B/C operations include device material generation, public prekey
 bundle export, first-message `encryptEnvelope`, `decryptEnvelope`,
-`exportDeviceState`, and known-session reply encryption.
+`exportDeviceState`, and known-session reply encryption. Recovery Protocol v1
+adds encrypted device-transfer and recovery-bundle operations for product
+clients that need old-device state restoration while keeping private state
+encrypted outside the Worker boundary.
 
 This project may become Signal Protocol-compatible, but it is not affiliated with
 Signal Messenger LLC, Signal Foundation, Signal Technology Foundation, or the

@@ -152,6 +152,18 @@ Bob encryptKnownSessionEnvelope: reply used existing session, Signal ciphertext
 type 2, and prekeyBundleProcessed false.
 ```
 
+Recovery Protocol v1 Worker operations added after Packet C:
+
+- `exportDeviceTransferBundle`
+- `importDeviceTransferBundle`
+- `exportEncryptedRecoveryBundle`
+- `importEncryptedRecoveryBundle`
+
+These operations encrypt and decrypt full device material snapshots with a
+user-controlled secret using PBKDF2-SHA-256 plus AES-GCM in the Worker. Product
+auth, passkey step-up, QR ceremony, server storage, and org authorization remain
+private-product responsibilities outside this public runtime.
+
 ## Next Step
 
 Connect a private web consumer only through the Worker URL boundary:

@@ -4,8 +4,8 @@
   "license": "AGPL-3.0-only",
   "hashes": {
     "runtime-worker.js": {
-      "sha256": "c897b4df637ece7065f236e9c9865658df2b224e6e34ce59c57510ef08c2de05",
-      "bytes": 34679
+      "sha256": "c1bdadfc0f27af3a9355b63eae936085991fa9d7a5da1ef1828989e992b6df75",
+      "bytes": 41330
     },
     "signal_wasm.js": {
       "sha256": "35a82f011cfa75cbf6f537bf327c909fa4646118129f4caa5f942ebe601f65d0",
@@ -24,8 +24,8 @@
       "bytes": 1059
     },
     "SOURCE.txt": {
-      "sha256": "8c2f3a0682517ad5eb9a061dd95761c7088fba68efaea1bc16675d9c74c97622",
-      "bytes": 1168
+      "sha256": "5f96400d1d6a43489b23aa38f20e495366b397046dc71f24ce743cb311c89c3f",
+      "bytes": 1426
     }
   }
 }

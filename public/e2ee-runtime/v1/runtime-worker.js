@@ -25,7 +25,7 @@ import initWasm, {
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.4",
+  runtimeVersion: "0.1.0-prealpha.5",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -89,6 +89,14 @@ async function handleRequest(message) {
         return ok(requestId, await decryptEnvelope(message.payload));
       case "exportDeviceState":
         return ok(requestId, exportDeviceState(message.payload));
+      case "exportDeviceTransferBundle":
+        return ok(requestId, await exportDeviceTransferBundle(message.payload));
+      case "importDeviceTransferBundle":
+        return ok(requestId, await importDeviceTransferBundle(message.payload));
+      case "exportEncryptedRecoveryBundle":
+        return ok(requestId, await exportEncryptedRecoveryBundle(message.payload));
+      case "importEncryptedRecoveryBundle":
+        return ok(requestId, await importEncryptedRecoveryBundle(message.payload));
       default:
         throw new Error(`Unsupported runtime op: ${message.op}`);
     }
@@ -433,6 +441,98 @@ async function decryptEnvelope(payload) {
 
 function exportDeviceState(payload) {
   const material = resolveDeviceMaterial(payload);
+  return {
+    material: cloneJson(material),
+    privateKeyMaterial: cloneJson(assertObject(material.privateKeyMaterial, "privateKeyMaterial")),
+    prekeyBundle: createPrekeyBundleFromMaterial(material),
+  };
+}
+
+async function exportDeviceTransferBundle(payload) {
+  return exportEncryptedDeviceStateBundle(payload, {
+    mode: "local_encrypted_transfer",
+    secretLabel: "transferSecret",
+  });
+}
+
+async function importDeviceTransferBundle(payload) {
+  return importEncryptedDeviceStateBundle(payload, {
+    expectedMode: "local_encrypted_transfer",
+    secretLabel: "transferSecret",
+  });
+}
+
+async function exportEncryptedRecoveryBundle(payload) {
+  return exportEncryptedDeviceStateBundle(payload, {
+    mode: "passphrase_encrypted_backup",
+    secretLabel: "recoverySecret",
+  });
+}
+
+async function importEncryptedRecoveryBundle(payload) {
+  return importEncryptedDeviceStateBundle(payload, {
+    expectedMode: "passphrase_encrypted_backup",
+    secretLabel: "recoverySecret",
+  });
+}
+
+async function exportEncryptedDeviceStateBundle(payload, options) {
+  const input = assertObject(payload, "payload");
+  const material = resolveDeviceMaterial(
+    input.material ?? input.deviceMaterial ?? input.localDevice ?? input,
+  );
+  const secret = resolveRecoverySecret(input, options.secretLabel);
+  const createdAt = optionalString(input.createdAt) ?? new Date().toISOString();
+  const saltBytes = randomBytes(16);
+  const ivBytes = randomBytes(12);
+  const encryptedBytes = await encryptJsonWithSecret(
+    {
+      schemaVersion: 1,
+      exportedAt: createdAt,
+      material: cloneJson(material),
+    },
+    secret,
+    saltBytes,
+    ivBytes,
+  );
+
+  return {
+    schemaVersion: 1,
+    protocol: "e2ee-runtime-recovery-v1",
+    mode: options.mode,
+    createdAt,
+    runtimeVersion: metadata.runtimeVersion,
+    sourceRepository: metadata.sourceRepository,
+    kdf: {
+      name: "PBKDF2-SHA-256",
+      iterations: 210000,
+      saltBase64: bytesToBase64(saltBytes),
+    },
+    cipher: {
+      name: "AES-GCM",
+      ivBase64: bytesToBase64(ivBytes),
+    },
+    encryptedDeviceStateBase64: bytesToBase64(encryptedBytes),
+    publicPrekeyBundle: createPrekeyBundleFromMaterial(material),
+  };
+}
+
+async function importEncryptedDeviceStateBundle(payload, options) {
+  const input = assertObject(payload, "payload");
+  const bundle = assertObject(input.bundle ?? input.transferBundle ?? input.recoveryBundle, "bundle");
+  const secret = resolveRecoverySecret(input, options.secretLabel);
+  assertRecoveryBundleEnvelope(bundle, options.expectedMode);
+  const decrypted = await decryptJsonWithSecret(bundle, secret);
+  const payloadSchemaVersion = assertInteger(
+    decrypted.schemaVersion,
+    "bundle payload schemaVersion",
+    1,
+    1,
+  );
+  if (payloadSchemaVersion !== 1) {
+    throw new Error("Unsupported recovery bundle payload schemaVersion");
+  }
+  const material = resolveDeviceMaterial(decrypted.material);
   return {
     material: cloneJson(material),
     privateKeyMaterial: cloneJson(assertObject(material.privateKeyMaterial, "privateKeyMaterial")),
@@ -911,6 +1011,102 @@ function resolveCiphertextBytes(input, envelope) {
     return base64ToBytes(envelope.ciphertext);
   }
   throw new Error("decryptEnvelope payload requires ciphertextBase64 or envelope.ciphertextBase64");
+}
+
+function resolveRecoverySecret(input, preferredField) {
+  const value =
+    input[preferredField] ??
+    input.transferSecret ??
+    input.recoverySecret ??
+    input.passphrase ??
+    input.userControlledSecret;
+  const secret = assertString(value, preferredField);
+  if (secret.length < 12) {
+    throw new Error(`${preferredField} must be at least 12 characters`);
+  }
+  return secret;
+}
+
+function assertRecoveryBundleEnvelope(bundle, expectedMode) {
+  assertInteger(bundle.schemaVersion, "bundle.schemaVersion", 1, 1);
+  const protocol = assertString(bundle.protocol, "bundle.protocol");
+  if (protocol !== "e2ee-runtime-recovery-v1") {
+    throw new Error(`Unsupported recovery bundle protocol: ${protocol}`);
+  }
+  const mode = assertString(bundle.mode, "bundle.mode");
+  if (mode !== expectedMode) {
+    throw new Error(`Recovery bundle mode mismatch: expected ${expectedMode}, got ${mode}`);
+  }
+  assertObject(bundle.kdf, "bundle.kdf");
+  assertObject(bundle.cipher, "bundle.cipher");
+  assertString(bundle.encryptedDeviceStateBase64, "bundle.encryptedDeviceStateBase64");
+}
+
+async function encryptJsonWithSecret(value, secret, saltBytes, ivBytes) {
+  const key = await deriveRecoveryAesKey(secret, saltBytes);
+  const plaintextBytes = new TextEncoder().encode(JSON.stringify(value));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: ivBytes },
+    key,
+    plaintextBytes,
+  );
+  return new Uint8Array(encrypted);
+}
+
+async function decryptJsonWithSecret(bundle, secret) {
+  const kdf = assertObject(bundle.kdf, "bundle.kdf");
+  const cipher = assertObject(bundle.cipher, "bundle.cipher");
+  const kdfName = assertString(kdf.name, "bundle.kdf.name");
+  const cipherName = assertString(cipher.name, "bundle.cipher.name");
+  if (kdfName !== "PBKDF2-SHA-256") {
+    throw new Error(`Unsupported recovery bundle KDF: ${kdfName}`);
+  }
+  if (cipherName !== "AES-GCM") {
+    throw new Error(`Unsupported recovery bundle cipher: ${cipherName}`);
+  }
+  const saltBytes = base64ToBytes(assertString(kdf.saltBase64, "bundle.kdf.saltBase64"));
+  const ivBytes = base64ToBytes(assertString(cipher.ivBase64, "bundle.cipher.ivBase64"));
+  const encryptedBytes = base64ToBytes(
+    assertString(bundle.encryptedDeviceStateBase64, "bundle.encryptedDeviceStateBase64"),
+  );
+  const key = await deriveRecoveryAesKey(secret, saltBytes);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: ivBytes },
+    key,
+    encryptedBytes,
+  );
+  return JSON.parse(bytesToUtf8(new Uint8Array(decrypted)));
+}
+
+async function deriveRecoveryAesKey(secret, saltBytes) {
+  if (!crypto?.subtle) {
+    throw new Error("Recovery bundle encryption requires Web Crypto subtle API");
+  }
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: saltBytes,
+      iterations: 210000,
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+function randomBytes(length) {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return bytes;
 }
 
 function cloneJson(value) {
