@@ -10,6 +10,7 @@ import initWasm, {
   WasmPublicKey,
   decryptMessage,
   encryptMessage,
+  generate_attachment_key,
   generateKyberPreKey,
   generatePreKeys,
   generateRegistrationId,
@@ -25,7 +26,7 @@ import initWasm, {
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.5",
+  runtimeVersion: "0.1.0-prealpha.6",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -87,6 +88,10 @@ async function handleRequest(message) {
         return ok(requestId, await encryptKnownSessionEnvelope(message.payload));
       case "decryptEnvelope":
         return ok(requestId, await decryptEnvelope(message.payload));
+      case "encryptAttachment":
+        return ok(requestId, await encryptAttachment(message.payload));
+      case "decryptAttachment":
+        return ok(requestId, await decryptAttachment(message.payload));
       case "exportDeviceState":
         return ok(requestId, exportDeviceState(message.payload));
       case "exportDeviceTransferBundle":
@@ -474,6 +479,184 @@ async function importEncryptedRecoveryBundle(payload) {
     expectedMode: "passphrase_encrypted_backup",
     secretLabel: "recoverySecret",
   });
+}
+
+async function encryptAttachment(payload) {
+  assertAttachmentCryptoAvailable();
+  const input = assertObject(payload, "payload");
+  const senderMaterial = resolveDeviceMaterial(
+    input.senderMaterial ?? input.senderDevice ?? input.localDevice ?? input.material,
+  );
+  const recipients = assertOptionalArray(input.recipients, "recipients");
+  if (recipients.length === 0) {
+    throw new Error("encryptAttachment payload requires at least one recipient");
+  }
+
+  const plaintextBytes = resolveAttachmentPlaintextBytes(input);
+  const attachmentKey = generate_attachment_key();
+  const contentKeyBytes = await deriveAttachmentContentKeyBytes(attachmentKey);
+  const nonceBytes = randomBytes(12);
+  const associatedData = resolveAttachmentAssociatedData(input, null);
+  const contentKey = await importAttachmentContentKey(contentKeyBytes, ["encrypt"]);
+  const encryptedBytes = new Uint8Array(
+    await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonceBytes,
+        ...(associatedData ? { additionalData: utf8Bytes(associatedData) } : {}),
+      },
+      contentKey,
+      plaintextBytes,
+    ),
+  );
+
+  let updatedSenderMaterial = senderMaterial;
+  const keyWrappers = [];
+  for (const [index, recipientValue] of recipients.entries()) {
+    const recipient = assertObject(recipientValue, `recipients[${index}]`);
+    const recipientDeviceId = assertString(
+      recipient.recipientDeviceId,
+      `recipients[${index}].recipientDeviceId`,
+    );
+    const recipientPrekeyBundle =
+      isObject(recipient.recipientPrekeyBundle)
+        ? recipient.recipientPrekeyBundle
+        : isObject(recipient.prekeyBundle)
+          ? recipient.prekeyBundle
+          : isObject(recipient.recipientBundle)
+            ? recipient.recipientBundle
+            : null;
+    const wrappedKey = await encryptRuntimeEnvelope(
+      {
+        senderMaterial: updatedSenderMaterial,
+        ...(recipientPrekeyBundle ? { recipientPrekeyBundle } : {}),
+        senderAddressName:
+          optionalString(recipient.senderAddressName) ??
+          optionalString(input.senderAddressName) ??
+          "sender",
+        recipientAddressName:
+          optionalString(recipient.recipientAddressName) ??
+          optionalString(recipient.addressName) ??
+          optionalString(recipient.principalId),
+        recipientDeviceId,
+        ...(recipient.recipientProtocolDeviceId != null
+          ? { recipientProtocolDeviceId: recipient.recipientProtocolDeviceId }
+          : recipient.signalDeviceId != null
+            ? { recipientProtocolDeviceId: recipient.signalDeviceId }
+            : recipient.recipientSignalDeviceId != null
+              ? { recipientProtocolDeviceId: recipient.recipientSignalDeviceId }
+              : {}),
+        ...(optionalString(recipient.identityKeyPublic)
+          ? { recipientIdentityKeyPublic: recipient.identityKeyPublic }
+          : {}),
+        plaintextBase64: bytesToBase64(attachmentKey),
+        envelopeType: "attachment_key",
+      },
+      { requirePrekeyBundle: false },
+    );
+    updatedSenderMaterial = wrappedKey.updatedSenderMaterial;
+    keyWrappers.push({
+      recipientDeviceId,
+      wrappedKeyCiphertext: wrappedKey.ciphertextBase64,
+      wrappingAlgorithm: "signal-envelope-key-wrap-v1",
+      signalCiphertextType: wrappedKey.signalCiphertextType,
+      senderAddress: wrappedKey.senderAddress,
+      senderProtocolDeviceId: wrappedKey.senderProtocolDeviceId,
+      recipientAddress: wrappedKey.recipientAddress,
+      recipientProtocolDeviceId: wrappedKey.recipientProtocolDeviceId,
+      prekeyBundleProcessed: wrappedKey.prekeyBundleProcessed,
+    });
+  }
+
+  const nonce = bytesToBase64(nonceBytes);
+  const encryptedMetadata = {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    nonce,
+    ...(associatedData ? { associatedData } : {}),
+    keyWrappers,
+  };
+  const ciphertextBase64 = bytesToBase64(encryptedBytes);
+  return {
+    algorithm: encryptedMetadata.algorithm,
+    ciphertext: ciphertextBase64,
+    ciphertextBase64,
+    ciphertextSizeBytes: encryptedBytes.byteLength,
+    nonce,
+    ...(associatedData ? { associatedData } : {}),
+    keyWrappers,
+    encryptedMetadata,
+    updatedSenderMaterial,
+  };
+}
+
+async function decryptAttachment(payload) {
+  assertAttachmentCryptoAvailable();
+  const input = assertObject(payload, "payload");
+  const attachment = isObject(input.attachment) ? input.attachment : input;
+  const encryptedMetadata = resolveAttachmentMetadata(input, attachment);
+  const recipientMaterial = resolveDeviceMaterial(
+    input.recipientMaterial ?? input.recipientDevice ?? input.localDevice ?? input.material,
+  );
+  const recipientDeviceId =
+    optionalString(input.recipientDeviceId) ??
+    optionalString(input.localDeviceId) ??
+    optionalString(input.deviceId);
+  const wrapper = selectAttachmentKeyWrapper(encryptedMetadata.keyWrappers, recipientDeviceId);
+  const header = resolveAttachmentWrapperHeader(wrapper);
+  const keyEnvelope = {
+    recipientDeviceId: wrapper.recipientDeviceId,
+    envelopeType: "attachment_key",
+    ciphertext: wrapper.wrappedKeyCiphertext,
+    ciphertextBase64: wrapper.wrappedKeyCiphertext,
+    signalCiphertextType: assertInteger(
+      header.signalCiphertextType,
+      "attachment wrapper signalCiphertextType",
+      1,
+      255,
+    ),
+    senderAddress: assertString(header.senderAddress, "attachment wrapper senderAddress"),
+    senderProtocolDeviceId: assertInteger(
+      header.senderProtocolDeviceId,
+      "attachment wrapper senderProtocolDeviceId",
+      1,
+      127,
+    ),
+    recipientAddress: assertString(header.recipientAddress, "attachment wrapper recipientAddress"),
+    recipientProtocolDeviceId: assertInteger(
+      header.recipientProtocolDeviceId,
+      "attachment wrapper recipientProtocolDeviceId",
+      1,
+      127,
+    ),
+    prekeyBundleProcessed: header.prekeyBundleProcessed === true,
+  };
+  const unwrappedKey = await decryptEnvelope({
+    recipientMaterial,
+    envelope: keyEnvelope,
+    senderProtocolDeviceId: keyEnvelope.senderProtocolDeviceId,
+    recipientProtocolDeviceId: keyEnvelope.recipientProtocolDeviceId,
+  });
+  const attachmentKey = base64ToBytes(unwrappedKey.plaintextBase64);
+  const contentKeyBytes = await deriveAttachmentContentKeyBytes(attachmentKey);
+  const contentKey = await importAttachmentContentKey(contentKeyBytes, ["decrypt"]);
+  const associatedData = resolveAttachmentAssociatedData(input, encryptedMetadata);
+  const plaintextBytes = new Uint8Array(
+    await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: base64ToBytes(assertString(encryptedMetadata.nonce, "encryptedMetadata.nonce")),
+        ...(associatedData ? { additionalData: utf8Bytes(associatedData) } : {}),
+      },
+      contentKey,
+      resolveAttachmentCiphertextBytes(input, attachment),
+    ),
+  );
+
+  return {
+    plaintextBase64: bytesToBase64(plaintextBytes),
+    updatedRecipientMaterial: unwrappedKey.updatedRecipientMaterial,
+  };
 }
 
 async function exportEncryptedDeviceStateBundle(payload, options) {
@@ -1013,6 +1196,112 @@ function resolveCiphertextBytes(input, envelope) {
   throw new Error("decryptEnvelope payload requires ciphertextBase64 or envelope.ciphertextBase64");
 }
 
+function resolveAttachmentPlaintextBytes(input) {
+  if (typeof input.plaintextBase64 === "string") {
+    return base64ToBytes(input.plaintextBase64);
+  }
+  if (typeof input.attachmentPlaintextBase64 === "string") {
+    return base64ToBytes(input.attachmentPlaintextBase64);
+  }
+  if (input.plaintext instanceof Uint8Array) {
+    return input.plaintext;
+  }
+  if (Array.isArray(input.plaintext)) {
+    return bytesFromNumberArray(input.plaintext, "plaintext");
+  }
+  if (typeof input.plaintext === "string") {
+    return utf8Bytes(input.plaintext);
+  }
+  throw new Error("encryptAttachment payload requires plaintextBase64 or plaintext bytes");
+}
+
+function resolveAttachmentCiphertextBytes(input, attachment) {
+  if (typeof input.ciphertextBase64 === "string") {
+    return base64ToBytes(input.ciphertextBase64);
+  }
+  if (typeof attachment.ciphertextBase64 === "string") {
+    return base64ToBytes(attachment.ciphertextBase64);
+  }
+  if (typeof input.ciphertext === "string") {
+    return base64ToBytes(input.ciphertext);
+  }
+  if (typeof attachment.ciphertext === "string") {
+    return base64ToBytes(attachment.ciphertext);
+  }
+  if (input.ciphertext instanceof Uint8Array) {
+    return input.ciphertext;
+  }
+  if (attachment.ciphertext instanceof Uint8Array) {
+    return attachment.ciphertext;
+  }
+  if (Array.isArray(input.ciphertext)) {
+    return bytesFromNumberArray(input.ciphertext, "ciphertext");
+  }
+  if (Array.isArray(attachment.ciphertext)) {
+    return bytesFromNumberArray(attachment.ciphertext, "attachment.ciphertext");
+  }
+  throw new Error("decryptAttachment payload requires ciphertextBase64 or attachment.ciphertextBase64");
+}
+
+function resolveAttachmentMetadata(input, attachment) {
+  const metadata =
+    isObject(input.encryptedMetadata)
+      ? input.encryptedMetadata
+      : isObject(input.metadata)
+        ? input.metadata
+        : isObject(attachment.encryptedMetadata)
+          ? attachment.encryptedMetadata
+          : isObject(attachment.metadata)
+            ? attachment.metadata
+            : attachment;
+  assertInteger(metadata.version, "encryptedMetadata.version", 1, 1);
+  const algorithm = assertString(metadata.algorithm, "encryptedMetadata.algorithm");
+  if (algorithm !== "AES-256-GCM") {
+    throw new Error(`Unsupported attachment algorithm: ${algorithm}`);
+  }
+  assertString(metadata.nonce, "encryptedMetadata.nonce");
+  const keyWrappers = assertOptionalArray(metadata.keyWrappers, "encryptedMetadata.keyWrappers");
+  if (keyWrappers.length === 0) {
+    throw new Error("encryptedMetadata.keyWrappers must contain at least one wrapper");
+  }
+  return metadata;
+}
+
+function selectAttachmentKeyWrapper(keyWrappers, recipientDeviceId) {
+  const wrappers = assertOptionalArray(keyWrappers, "encryptedMetadata.keyWrappers");
+  const wrapper =
+    recipientDeviceId
+      ? wrappers.find(
+          (candidate) =>
+            isObject(candidate) && candidate.recipientDeviceId === recipientDeviceId,
+        )
+      : wrappers[0];
+  if (!wrapper) {
+    throw new Error("decryptAttachment could not find a key wrapper for the local device");
+  }
+  assertString(wrapper.recipientDeviceId, "attachment wrapper recipientDeviceId");
+  assertString(wrapper.wrappedKeyCiphertext, "attachment wrapper wrappedKeyCiphertext");
+  return wrapper;
+}
+
+function resolveAttachmentWrapperHeader(wrapper) {
+  const header = isObject(wrapper.header) ? wrapper.header : wrapper;
+  return assertObject(header, "attachment wrapper header");
+}
+
+function resolveAttachmentAssociatedData(input, metadata) {
+  const inputAssociatedData = optionalString(input.associatedData);
+  const metadataAssociatedData = metadata ? optionalString(metadata.associatedData) : undefined;
+  if (
+    inputAssociatedData &&
+    metadataAssociatedData &&
+    inputAssociatedData !== metadataAssociatedData
+  ) {
+    throw new Error("Attachment associatedData does not match encrypted metadata");
+  }
+  return inputAssociatedData ?? metadataAssociatedData;
+}
+
 function resolveRecoverySecret(input, preferredField) {
   const value =
     input[preferredField] ??
@@ -1103,6 +1392,29 @@ async function deriveRecoveryAesKey(secret, saltBytes) {
   );
 }
 
+function assertAttachmentCryptoAvailable() {
+  if (!crypto?.subtle) {
+    throw new Error("Attachment encryption requires Web Crypto subtle API");
+  }
+}
+
+async function deriveAttachmentContentKeyBytes(attachmentKey) {
+  if (attachmentKey.byteLength === 32) {
+    return attachmentKey;
+  }
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", attachmentKey));
+}
+
+async function importAttachmentContentKey(keyBytes, usages) {
+  return crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-GCM", length: 256 },
+    false,
+    usages,
+  );
+}
+
 function randomBytes(length) {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
@@ -1179,6 +1491,22 @@ function base64ToBytes(value) {
 
 function bytesToUtf8(bytes) {
   return new TextDecoder().decode(bytes);
+}
+
+function utf8Bytes(value) {
+  return new TextEncoder().encode(value);
+}
+
+function bytesFromNumberArray(value, label) {
+  const bytes = new Uint8Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    const byte = value[index];
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+      throw new Error(`${label}[${index}] must be a byte`);
+    }
+    bytes[index] = byte;
+  }
+  return bytes;
 }
 
 function isObject(value) {

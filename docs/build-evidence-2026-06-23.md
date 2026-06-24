@@ -164,6 +164,18 @@ user-controlled secret using PBKDF2-SHA-256 plus AES-GCM in the Worker. Product
 auth, passkey step-up, QR ceremony, server storage, and org authorization remain
 private-product responsibilities outside this public runtime.
 
+Attachment Worker operations added after Recovery Protocol v1:
+
+- `encryptAttachment`
+- `decryptAttachment`
+
+These operations encrypt attachment bytes with `AES-256-GCM` inside the Worker.
+The content key is generated locally, reduced to a 256-bit AES key with SHA-256
+when the upstream Signal attachment key material is 64 bytes, and wrapped for
+each recipient device through the existing Signal envelope session. Product
+storage, Supabase buckets, RLS, UI, and attachment routing remain private-product
+responsibilities outside this public runtime.
+
 ## Next Step
 
 Connect a private web consumer only through the Worker URL boundary:

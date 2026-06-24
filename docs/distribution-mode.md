@@ -47,6 +47,8 @@ Current pre-alpha Worker operations:
 - `encryptEnvelope`
 - `encryptKnownSessionEnvelope`
 - `decryptEnvelope`
+- `encryptAttachment`
+- `decryptAttachment`
 - `exportDeviceState`
 - `exportDeviceTransferBundle`
 - `importDeviceTransferBundle`
@@ -72,6 +74,15 @@ Each enabled private-app build must record:
 - source offer path
 - bundle audit result
 - owner GO record
+
+Attachment boundary:
+
+- Content bytes are encrypted in the Worker with `AES-256-GCM`.
+- The content key is wrapped per recipient device through the existing Signal
+  envelope session.
+- Private products may store ciphertext and encrypted metadata, but must not
+  send plaintext attachment bytes to product storage.
+- The Worker does not define product storage buckets, RLS, entitlement, or UI.
 
 ## Mobile
 

@@ -70,6 +70,9 @@ const requiredText = {
     "importDeviceTransferBundle",
     "exportEncryptedRecoveryBundle",
     "importEncryptedRecoveryBundle",
+    "encryptAttachment",
+    "decryptAttachment",
+    "AES-256-GCM",
   ],
   "docs/distribution-mode.md": [
     "web_worker_url_artifact",
@@ -80,11 +83,14 @@ const requiredText = {
     "encryptEnvelope",
     "encryptKnownSessionEnvelope",
     "decryptEnvelope",
+    "encryptAttachment",
+    "decryptAttachment",
     "exportDeviceState",
     "exportDeviceTransferBundle",
     "importDeviceTransferBundle",
     "exportEncryptedRecoveryBundle",
     "importEncryptedRecoveryBundle",
+    "AES-256-GCM",
     "expo_agpl_runtime_blocked_until_legal_review",
   ],
   "docs/recovery-protocol-v1.md": [
@@ -148,6 +154,8 @@ const requiredText = {
     "importDeviceTransferBundle",
     "exportEncryptedRecoveryBundle",
     "importEncryptedRecoveryBundle",
+    "encryptAttachment",
+    "decryptAttachment",
   ],
   "public/e2ee-runtime/v1/signal_wasm.js": [
     "signal_wasm_bg.wasm",

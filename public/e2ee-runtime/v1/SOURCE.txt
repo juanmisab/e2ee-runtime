@@ -37,6 +37,13 @@ The Worker exposes encrypted device-transfer and encrypted recovery-bundle JSON
 operations. Product auth, passkey step-up, QR ceremonies, and storage policy are
 consumer responsibilities and are not implemented in this public runtime.
 
+Attachment operations:
+The Worker exposes pre-alpha attachment encryption and decryption JSON
+operations. Attachment bytes are encrypted inside the Worker with AES-256-GCM.
+The attachment content key is wrapped per recipient device through the existing
+Signal envelope session. Product storage, RLS, entitlement, and UI are consumer
+responsibilities and are not implemented in this public runtime.
+
 Affiliation:
 This project may become Signal Protocol-compatible, but it is not affiliated
 with Signal Messenger LLC, Signal Foundation, Signal Technology Foundation, or
