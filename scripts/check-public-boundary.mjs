@@ -26,6 +26,12 @@ const requiredFiles = [
   "public/e2ee-runtime/v1/runtime.wasm",
   "public/e2ee-runtime/v1/signal_wasm.js",
   "scripts/stage-web-artifact.mjs",
+  "src/worker/abi.ts",
+  "src/worker/runtime-worker.js",
+  "src/worker/ops/attachments.ts",
+  "src/worker/ops/device.ts",
+  "src/worker/ops/envelopes.ts",
+  "src/worker/ops/recovery.ts",
   "third_party/getmaapp-signal-wasm/UPSTREAM.md",
 ];
 
@@ -133,6 +139,8 @@ const requiredText = {
   ],
   "public/e2ee-runtime/v1/SOURCE.txt": [
     "https://github.com/juanmisab/e2ee-runtime",
+    "src/worker/runtime-worker.js",
+    "src/worker/abi.ts",
     "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
     "JSON postMessage",
   ],
@@ -145,6 +153,7 @@ const requiredText = {
     "runtimeMetadata",
     "generateIdentityKeyPair",
     "createDeviceMaterial",
+    "generatePrekeyBatch",
     "exportPrekeyBundle",
     "encryptEnvelope",
     "encryptKnownSessionEnvelope",
@@ -162,8 +171,45 @@ const requiredText = {
   ],
   "scripts/stage-web-artifact.mjs": [
     "public/e2ee-runtime/v1",
+    "src/worker/runtime-worker.js",
     "SOURCE.txt",
     "hashes.json",
+  ],
+  "src/worker/abi.ts": [
+    "runtimeMetadata",
+    "0.1.0-prealpha.8",
+    "generatePrekeyBatch",
+    "RuntimeOperation",
+  ],
+  "src/worker/runtime-worker.js": [
+    "JSON postMessage ABI only",
+    "runtimeMetadata",
+    "createDeviceMaterial",
+    "generatePrekeyBatch",
+    "encryptEnvelope",
+    "decryptEnvelope",
+    "encryptAttachment",
+    "decryptAttachment",
+    "exportEncryptedRecoveryBundle",
+  ],
+  "src/worker/ops/attachments.ts": [
+    "EncryptAttachmentPayload",
+    "DecryptAttachmentResult",
+    "AES-256-GCM",
+  ],
+  "src/worker/ops/device.ts": [
+    "CreateDeviceMaterialPayload",
+    "GeneratePrekeyBatchPayload",
+    "GeneratePrekeyBatchResult",
+  ],
+  "src/worker/ops/envelopes.ts": [
+    "EncryptEnvelopePayload",
+    "DecryptEnvelopeResult",
+  ],
+  "src/worker/ops/recovery.ts": [
+    "RecoveryBundle",
+    "passphrase_encrypted_backup",
+    "local_encrypted_transfer",
   ],
   "third_party/getmaapp-signal-wasm/UPSTREAM.md": [
     "https://github.com/getmaapp/signal-wasm",

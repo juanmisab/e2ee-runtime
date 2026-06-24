@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const upstreamPkg = path.join(repoRoot, "third_party/getmaapp-signal-wasm/pkg");
+const workerSource = path.join(repoRoot, "src/worker/runtime-worker.js");
 const artifactDir = path.join(repoRoot, "public/e2ee-runtime/v1");
 
 const sourceText = `# E2EE Runtime Source Offer
@@ -21,6 +22,16 @@ License:
 AGPL-3.0-only
 
 This artifact is built from the complete source tree in this public repository.
+The Worker source of truth is:
+src/worker/runtime-worker.js
+
+The JSON ABI and operation contracts are documented in:
+src/worker/abi.ts
+src/worker/ops/device.ts
+src/worker/ops/envelopes.ts
+src/worker/ops/attachments.ts
+src/worker/ops/recovery.ts
+
 The vendored upstream source is recorded in:
 third_party/getmaapp-signal-wasm/UPSTREAM.md
 
@@ -48,6 +59,12 @@ The Worker exposes encrypted device-transfer and encrypted recovery-bundle JSON
 operations. Product auth, passkey step-up, QR ceremonies, and storage policy are
 consumer responsibilities and are not implemented in this public runtime.
 
+Prekey refill:
+The Worker exposes generatePrekeyBatch so a local device can produce replacement
+one-time and Kyber prekeys without resetting its identity, sessions, or recovery
+state. Publishing those public keys to product storage is a consumer
+responsibility and is not implemented in this public runtime.
+
 Attachment operations:
 The Worker exposes pre-alpha attachment encryption and decryption JSON
 operations. Attachment bytes are encrypted inside the Worker with AES-256-GCM.
@@ -63,6 +80,7 @@ the Signal app.
 
 await mkdir(artifactDir, { recursive: true });
 
+await copyFile(workerSource, path.join(artifactDir, "runtime-worker.js"));
 await copyFile(path.join(upstreamPkg, "signal_wasm.js"), path.join(artifactDir, "signal_wasm.js"));
 await copyFile(path.join(upstreamPkg, "signal_wasm_bg.wasm"), path.join(artifactDir, "runtime.wasm"));
 await copyFile(path.join(repoRoot, "LICENSE"), path.join(artifactDir, "LICENSE"));
