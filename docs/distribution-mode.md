@@ -27,6 +27,22 @@ worker.postMessage({
 });
 ```
 
+Current public artifact path:
+
+```text
+public/e2ee-runtime/v1/runtime-worker.js
+```
+
+Current pre-alpha Worker operations:
+
+- `runtimeMetadata`
+- `runtimeReady`
+- `messageTypes`
+- `generateRegistrationId`
+- `generateRandomBytes`
+- `generateUuid`
+- `generateIdentityKeyPair`
+
 Forbidden private-app use:
 
 ```ts
@@ -64,4 +80,3 @@ Allowed later paths:
 - owned implementation with external crypto review
 - a separately approved public mobile shell
 - remote/WebView runtime only after App Store and legal review
-

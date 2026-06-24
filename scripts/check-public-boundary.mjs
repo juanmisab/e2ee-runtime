@@ -17,12 +17,20 @@ const requiredFiles = [
   "docs/import-log.md",
   "docs/license-plan.md",
   "docs/source-intake-manifest.md",
+  "public/e2ee-runtime/v1/LICENSE",
+  "public/e2ee-runtime/v1/NOTICE",
+  "public/e2ee-runtime/v1/SOURCE.txt",
+  "public/e2ee-runtime/v1/hashes.json",
+  "public/e2ee-runtime/v1/runtime-worker.js",
+  "public/e2ee-runtime/v1/runtime.wasm",
+  "public/e2ee-runtime/v1/signal_wasm.js",
+  "scripts/stage-web-artifact.mjs",
   "third_party/getmaapp-signal-wasm/UPSTREAM.md",
 ];
 
 const requiredText = {
   "README.md": [
-    "pre-alpha scaffold",
+    "pre-alpha AGPL runtime artifact",
     "/e2ee-runtime/v1/runtime-worker.js",
     "JSON `postMessage`",
     "not affiliated",
@@ -47,6 +55,7 @@ const requiredText = {
     "wasm-pack build --target web --out-dir pkg",
     "signal_wasm_bg.wasm",
     "e0b125b21d0c663b8d74021fabb63a419ee3a1b5c1dd2a314d44b129b50063bd",
+    "node scripts/stage-web-artifact.mjs",
   ],
   "docs/distribution-mode.md": [
     "web_worker_url_artifact",
@@ -72,6 +81,35 @@ const requiredText = {
     "third_party/getmaapp-signal-wasm",
     "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
     "Local modifications:",
+  ],
+  "public/e2ee-runtime/v1/LICENSE": [
+    "GNU AFFERO GENERAL PUBLIC LICENSE",
+  ],
+  "public/e2ee-runtime/v1/NOTICE": [
+    "getmaapp/signal-wasm",
+    "signalapp/libsignal",
+  ],
+  "public/e2ee-runtime/v1/SOURCE.txt": [
+    "https://github.com/juanmisab/e2ee-runtime",
+    "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
+    "JSON postMessage",
+  ],
+  "public/e2ee-runtime/v1/hashes.json": [
+    "\"artifactPath\": \"/e2ee-runtime/v1/runtime-worker.js\"",
+    "\"runtime.wasm\"",
+  ],
+  "public/e2ee-runtime/v1/runtime-worker.js": [
+    "JSON postMessage ABI only",
+    "runtimeMetadata",
+    "generateIdentityKeyPair",
+  ],
+  "public/e2ee-runtime/v1/signal_wasm.js": [
+    "signal_wasm_bg.wasm",
+  ],
+  "scripts/stage-web-artifact.mjs": [
+    "public/e2ee-runtime/v1",
+    "SOURCE.txt",
+    "hashes.json",
   ],
   "third_party/getmaapp-signal-wasm/UPSTREAM.md": [
     "https://github.com/getmaapp/signal-wasm",
@@ -133,7 +171,7 @@ async function scanSourceFiles(absolutePath, relativePath) {
 
   if (info.isDirectory()) {
     const baseName = path.basename(absolutePath);
-  if ([".git", "node_modules", "dist", "target", "pkg", "third_party"].includes(baseName)) {
+    if ([".git", "node_modules", "dist", "target", "pkg", "third_party"].includes(baseName)) {
       return;
     }
     const entries = await readdir(absolutePath, { withFileTypes: true });

@@ -88,15 +88,29 @@ e0b125b21d0c663b8d74021fabb63a419ee3a1b5c1dd2a314d44b129b50063bd  signal_wasm_bg
 e9beb618d2bb7e489ec8bbbb6eaad363b7b21b236ab0248b4c51f545e875432d  README.md
 ```
 
-## Next Step
+## Public Worker Artifact
 
-Create the public Worker wrapper and artifact directory:
+Staging command:
+
+```bash
+node scripts/stage-web-artifact.mjs
+```
+
+Artifact path:
 
 ```text
 public/e2ee-runtime/v1/runtime-worker.js
-public/e2ee-runtime/v1/runtime.wasm
-public/e2ee-runtime/v1/SOURCE.txt
-public/e2ee-runtime/v1/hashes.json
+```
+
+The staged artifact includes `runtime-worker.js`, the generated wasm-bindgen JS,
+`runtime.wasm`, `LICENSE`, `NOTICE`, `SOURCE.txt`, and `hashes.json`.
+
+## Next Step
+
+Connect a private web consumer only through the Worker URL boundary:
+
+```text
+public/e2ee-runtime/v1/runtime-worker.js
 ```
 
 Do not connect Dominize until the Worker wrapper uses JSON ABI only and this

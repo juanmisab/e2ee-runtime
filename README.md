@@ -2,7 +2,8 @@
 
 Public browser E2EE runtime workbench owned under `juanmisab`.
 
-Status: pre-alpha scaffold. No production crypto is included yet.
+Status: pre-alpha AGPL runtime artifact. This is a licensing and browser-worker
+integration runway, not a production-reviewed crypto release.
 
 This repo is intended to produce a versioned static Worker artifact:
 
@@ -41,7 +42,8 @@ Local checkout:
 
 ```bash
 node scripts/check-public-boundary.mjs
+node scripts/stage-web-artifact.mjs
 ```
 
-Do not import upstream AGPL source until the intake manifest and license plan
-are accepted.
+Do not connect private apps until the static artifact is staged, hashed, and
+reviewed as a Worker URL boundary.

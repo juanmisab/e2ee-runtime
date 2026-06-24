@@ -1,0 +1,31 @@
+{
+  "generatedBy": "scripts/stage-web-artifact.mjs",
+  "artifactPath": "/e2ee-runtime/v1/runtime-worker.js",
+  "license": "AGPL-3.0-only",
+  "hashes": {
+    "runtime-worker.js": {
+      "sha256": "862eaf50dfb9db804ec3207c1eb228f7a86a19c65294ca058ac5ee6e97a8c75e",
+      "bytes": 3774
+    },
+    "signal_wasm.js": {
+      "sha256": "35a82f011cfa75cbf6f537bf327c909fa4646118129f4caa5f942ebe601f65d0",
+      "bytes": 60098
+    },
+    "runtime.wasm": {
+      "sha256": "e0b125b21d0c663b8d74021fabb63a419ee3a1b5c1dd2a314d44b129b50063bd",
+      "bytes": 732190
+    },
+    "LICENSE": {
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "bytes": 34523
+    },
+    "NOTICE": {
+      "sha256": "08a73108d7fa4fc3ff2fecdb9724e33b907531a5b23d3a47f8138d1cfd0bbc84",
+      "bytes": 1059
+    },
+    "SOURCE.txt": {
+      "sha256": "8c2f3a0682517ad5eb9a061dd95761c7088fba68efaea1bc16675d9c74c97622",
+      "bytes": 1168
+    }
+  }
+}

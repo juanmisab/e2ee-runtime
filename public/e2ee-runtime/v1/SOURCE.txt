@@ -1,0 +1,38 @@
+# E2EE Runtime Source Offer
+
+Artifact path:
+/e2ee-runtime/v1/runtime-worker.js
+
+Public source repository:
+https://github.com/juanmisab/e2ee-runtime
+
+License:
+AGPL-3.0-only
+
+This artifact is built from the complete source tree in this public repository.
+The vendored upstream source is recorded in:
+third_party/getmaapp-signal-wasm/UPSTREAM.md
+
+Vendored upstream source:
+https://github.com/getmaapp/signal-wasm
+
+Vendored upstream commit:
+3a5293905e7eacfad42b0b324665849bdd4c9cdf
+
+Upstream crypto dependency:
+signalapp/libsignal crates, AGPL-3.0-only, via the vendored Cargo.toml.
+
+Build commands used for the current pre-alpha artifact:
+cd third_party/getmaapp-signal-wasm
+PATH="$(dirname "$(rustup which cargo)"):$PATH" wasm-pack build --target web --out-dir pkg
+cd ../..
+node scripts/stage-web-artifact.mjs
+
+Consumer boundary:
+Private apps must talk to this runtime through JSON postMessage calls to the
+Worker artifact. Do not import this runtime as a private app npm dependency.
+
+Affiliation:
+This project may become Signal Protocol-compatible, but it is not affiliated
+with Signal Messenger LLC, Signal Foundation, Signal Technology Foundation, or
+the Signal app.
