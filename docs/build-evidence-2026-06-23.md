@@ -136,6 +136,22 @@ ciphertext type 3, one sender session record, one trusted identity, and one
 known-recipient device mapping.
 ```
 
+Packet C Worker operations added after Packet B:
+
+- `decryptEnvelope`
+- `exportDeviceState`
+- `encryptKnownSessionEnvelope`
+
+Browser Worker smoke:
+
+```text
+Bob decryptEnvelope: opened Alice ciphertext as "hello bob".
+Bob updated state: one session record, one-time prekeys reduced from 3 to 2.
+Bob exportDeviceState: exported one session record.
+Bob encryptKnownSessionEnvelope: reply used existing session, Signal ciphertext
+type 2, and prekeyBundleProcessed false.
+```
+
 ## Next Step
 
 Connect a private web consumer only through the Worker URL boundary:

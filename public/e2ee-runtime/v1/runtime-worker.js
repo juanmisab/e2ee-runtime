@@ -8,6 +8,7 @@ import initWasm, {
   WasmPrivateKey,
   WasmProtocolAddress,
   WasmPublicKey,
+  decryptMessage,
   encryptMessage,
   generateKyberPreKey,
   generatePreKeys,
@@ -24,7 +25,7 @@ import initWasm, {
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.3",
+  runtimeVersion: "0.1.0-prealpha.4",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -82,6 +83,12 @@ async function handleRequest(message) {
         return ok(requestId, exportPrekeyBundle(message.payload));
       case "encryptEnvelope":
         return ok(requestId, await encryptEnvelope(message.payload));
+      case "encryptKnownSessionEnvelope":
+        return ok(requestId, await encryptKnownSessionEnvelope(message.payload));
+      case "decryptEnvelope":
+        return ok(requestId, await decryptEnvelope(message.payload));
+      case "exportDeviceState":
+        return ok(requestId, exportDeviceState(message.payload));
       default:
         throw new Error(`Unsupported runtime op: ${message.op}`);
     }
@@ -225,17 +232,32 @@ function exportPrekeyBundle(payload) {
 }
 
 async function encryptEnvelope(payload) {
+  return encryptRuntimeEnvelope(payload, { requirePrekeyBundle: true });
+}
+
+async function encryptKnownSessionEnvelope(payload) {
+  return encryptRuntimeEnvelope(payload, { requirePrekeyBundle: false });
+}
+
+async function encryptRuntimeEnvelope(payload, options) {
   const input = assertObject(payload, "payload");
   const senderMaterial = resolveDeviceMaterial(
     input.senderMaterial ?? input.localDevice ?? input.material,
   );
-  const recipientPrekeyBundle = assertObject(
-    input.recipientPrekeyBundle ?? input.prekeyBundle ?? input.recipientBundle,
-    "recipientPrekeyBundle",
-  );
+  const prekeyBundleInput = input.recipientPrekeyBundle ?? input.prekeyBundle ?? input.recipientBundle;
+  const recipientPrekeyBundle = isObject(prekeyBundleInput) ? prekeyBundleInput : null;
+  if (options.requirePrekeyBundle && !recipientPrekeyBundle) {
+    throw new Error("encryptEnvelope payload requires recipientPrekeyBundle");
+  }
   const plaintext = resolvePlaintextBytes(input);
   const senderAddressName = optionalString(input.senderAddressName) ?? "sender";
-  const recipientAddressName = optionalString(input.recipientAddressName) ?? "recipient";
+  const knownRecipient = recipientPrekeyBundle
+    ? null
+    : resolveKnownRecipientDevice(senderMaterial, input);
+  const recipientAddressName =
+    optionalString(input.recipientAddressName) ??
+    optionalString(knownRecipient?.addressName) ??
+    "recipient";
   const recipientDeviceId = optionalString(input.recipientDeviceId) ?? recipientAddressName;
   const envelopeType = optionalString(input.envelopeType) ?? "message";
   const senderState = await createSenderRuntimeState(senderMaterial);
@@ -243,44 +265,52 @@ async function encryptEnvelope(payload) {
     senderAddressName,
     assertInteger(senderMaterial.signalDeviceId, "senderMaterial.signalDeviceId", 1, 127),
   );
+  const recipientProtocolDeviceId = recipientPrekeyBundle
+    ? assertInteger(recipientPrekeyBundle.signalDeviceId, "recipientPrekeyBundle.signalDeviceId", 1, 127)
+    : resolveRecipientProtocolDeviceId(senderMaterial, input, recipientAddressName, recipientDeviceId);
   const recipientAddress = new WasmProtocolAddress(
     recipientAddressName,
-    assertInteger(recipientPrekeyBundle.signalDeviceId, "recipientPrekeyBundle.signalDeviceId", 1, 127),
+    recipientProtocolDeviceId,
   );
-  const recipientIdentityKey = WasmPublicKey.deserialize(
-    base64ToBytes(assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic")),
-  );
-  const signedPrekey = assertObject(recipientPrekeyBundle.signedPrekey, "recipientPrekeyBundle.signedPrekey");
-  const signedPrekeyPublic = WasmPublicKey.deserialize(
-    base64ToBytes(assertString(signedPrekey.publicKey, "recipientPrekeyBundle.signedPrekey.publicKey")),
-  );
-  const oneTimePrekey = firstOptionalPrekey(
-    recipientPrekeyBundle.oneTimePrekeys,
-    "recipientPrekeyBundle.oneTimePrekeys",
-  );
-  const kyberPrekey = firstRequiredPrekey(
-    recipientPrekeyBundle.kyberPrekeys,
-    "recipientPrekeyBundle.kyberPrekeys",
-  );
+  let recipientIdentityKey = null;
+  let signedPrekeyPublic = null;
   let ciphertext;
 
   try {
-    await processPreKeyBundle(
-      recipientAddress,
-      senderAddress,
-      assertInteger(recipientPrekeyBundle.registrationId, "recipientPrekeyBundle.registrationId", 1, 0x7fffffff),
-      recipientIdentityKey,
-      assertInteger(signedPrekey.prekeyId, "recipientPrekeyBundle.signedPrekey.prekeyId", 1, 0x00ffffff),
-      signedPrekeyPublic,
-      base64ToBytes(assertString(signedPrekey.signature, "recipientPrekeyBundle.signedPrekey.signature")),
-      oneTimePrekey?.prekeyId,
-      oneTimePrekey?.publicKeyBytes,
-      kyberPrekey.prekeyId,
-      kyberPrekey.publicKeyBytes,
-      kyberPrekey.signatureBytes,
-      senderState.sessionStore,
-      senderState.identityStore,
-    );
+    if (recipientPrekeyBundle) {
+      recipientIdentityKey = WasmPublicKey.deserialize(
+        base64ToBytes(assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic")),
+      );
+      const signedPrekey = assertObject(recipientPrekeyBundle.signedPrekey, "recipientPrekeyBundle.signedPrekey");
+      signedPrekeyPublic = WasmPublicKey.deserialize(
+        base64ToBytes(assertString(signedPrekey.publicKey, "recipientPrekeyBundle.signedPrekey.publicKey")),
+      );
+      const oneTimePrekey = firstOptionalPrekey(
+        recipientPrekeyBundle.oneTimePrekeys,
+        "recipientPrekeyBundle.oneTimePrekeys",
+      );
+      const kyberPrekey = firstRequiredPrekey(
+        recipientPrekeyBundle.kyberPrekeys,
+        "recipientPrekeyBundle.kyberPrekeys",
+      );
+
+      await processPreKeyBundle(
+        recipientAddress,
+        senderAddress,
+        assertInteger(recipientPrekeyBundle.registrationId, "recipientPrekeyBundle.registrationId", 1, 0x7fffffff),
+        recipientIdentityKey,
+        assertInteger(signedPrekey.prekeyId, "recipientPrekeyBundle.signedPrekey.prekeyId", 1, 0x00ffffff),
+        signedPrekeyPublic,
+        base64ToBytes(assertString(signedPrekey.signature, "recipientPrekeyBundle.signedPrekey.signature")),
+        oneTimePrekey?.prekeyId,
+        oneTimePrekey?.publicKeyBytes,
+        kyberPrekey.prekeyId,
+        kyberPrekey.publicKeyBytes,
+        kyberPrekey.signatureBytes,
+        senderState.sessionStore,
+        senderState.identityStore,
+      );
+    }
 
     ciphertext = await encryptMessage(
       plaintext,
@@ -297,7 +327,9 @@ async function encryptEnvelope(payload) {
         addressName: recipientAddressName,
         signalDeviceId: recipientAddress.deviceId,
         sessionRecordBase64: sessionRecord ? bytesToBase64(sessionRecord) : null,
-        recipientIdentityKeyPublic: assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic"),
+        recipientIdentityKeyPublic: recipientPrekeyBundle
+          ? assertString(recipientPrekeyBundle.identityKeyPublic, "recipientPrekeyBundle.identityKeyPublic")
+          : optionalString(input.recipientIdentityKeyPublic),
       },
     );
     const ciphertextBase64 = bytesToBase64(ciphertext.body);
@@ -309,19 +341,103 @@ async function encryptEnvelope(payload) {
       ciphertextBase64,
       signalCiphertextType: ciphertext.message_type,
       senderAddress: senderAddress.name,
+      senderProtocolDeviceId: senderAddress.deviceId,
       recipientAddress: recipientAddress.name,
       recipientProtocolDeviceId: recipientAddress.deviceId,
-      prekeyBundleProcessed: true,
+      prekeyBundleProcessed: Boolean(recipientPrekeyBundle),
       updatedSenderMaterial,
     };
   } finally {
     ciphertext?.free();
-    signedPrekeyPublic.free();
-    recipientIdentityKey.free();
+    signedPrekeyPublic?.free();
+    recipientIdentityKey?.free();
     recipientAddress.free();
     senderAddress.free();
     senderState.free();
   }
+}
+
+async function decryptEnvelope(payload) {
+  const input = assertObject(payload, "payload");
+  const envelope = isObject(input.envelope) ? input.envelope : input;
+  const recipientMaterial = resolveDeviceMaterial(
+    input.recipientMaterial ?? input.localDevice ?? input.material,
+  );
+  const ciphertextBytes = resolveCiphertextBytes(input, envelope);
+  const messageType = assertInteger(
+    input.signalCiphertextType ?? envelope.signalCiphertextType ?? input.messageType ?? envelope.messageType,
+    "signalCiphertextType",
+    1,
+    255,
+  );
+  const senderAddressName =
+    optionalString(input.senderAddressName) ??
+    optionalString(envelope.senderAddress) ??
+    "sender";
+  const recipientAddressName =
+    optionalString(input.recipientAddressName) ??
+    optionalString(input.localAddressName) ??
+    optionalString(envelope.recipientAddress) ??
+    "recipient";
+  const senderProtocolDeviceId = resolveSenderProtocolDeviceId(input, envelope);
+  const recipientProtocolDeviceId = assertInteger(
+    input.recipientProtocolDeviceId ?? recipientMaterial.signalDeviceId,
+    "recipientProtocolDeviceId",
+    1,
+    127,
+  );
+  const receiverState = await createReceiverRuntimeState(recipientMaterial);
+  const senderAddress = new WasmProtocolAddress(senderAddressName, senderProtocolDeviceId);
+  const recipientAddress = new WasmProtocolAddress(recipientAddressName, recipientProtocolDeviceId);
+
+  try {
+    const plaintextBytes = await decryptMessage(
+      ciphertextBytes,
+      messageType,
+      senderAddress,
+      recipientAddress,
+      receiverState.sessionStore,
+      receiverState.identityStore,
+      receiverState.preKeyStore,
+      receiverState.signedPreKeyStore,
+      receiverState.kyberPreKeyStore,
+    );
+    const sessionRecord = await receiverState.sessionStore.export_session(senderAddress);
+    const updatedRecipientMaterial = await updateRecipientMaterialAfterDecrypt(
+      recipientMaterial,
+      receiverState,
+      {
+        senderAddressName,
+        senderProtocolDeviceId,
+        senderIdentityKeyPublic: optionalString(input.senderIdentityKeyPublic ?? envelope.senderIdentityKeyPublic),
+        sessionRecordBase64: sessionRecord ? bytesToBase64(sessionRecord) : null,
+      },
+    );
+    const plaintextBase64 = bytesToBase64(plaintextBytes);
+
+    return {
+      plaintext: bytesToUtf8(plaintextBytes),
+      plaintextBase64,
+      senderAddress: senderAddress.name,
+      senderProtocolDeviceId: senderAddress.deviceId,
+      recipientAddress: recipientAddress.name,
+      recipientProtocolDeviceId: recipientAddress.deviceId,
+      updatedRecipientMaterial,
+    };
+  } finally {
+    senderAddress.free();
+    recipientAddress.free();
+    receiverState.free();
+  }
+}
+
+function exportDeviceState(payload) {
+  const material = resolveDeviceMaterial(payload);
+  return {
+    material: cloneJson(material),
+    privateKeyMaterial: cloneJson(assertObject(material.privateKeyMaterial, "privateKeyMaterial")),
+    prekeyBundle: createPrekeyBundleFromMaterial(material),
+  };
 }
 
 function createPrekeyBundleFromMaterial(material) {
@@ -408,22 +524,12 @@ async function createSenderRuntimeState(senderMaterial) {
   const importedAddresses = [];
 
   try {
-    const sessionRecords = assertOptionalArray(
+    await importSessionRecords(
       privateKeyMaterial.sessionRecords,
+      sessionStore,
+      importedAddresses,
       "senderMaterial.privateKeyMaterial.sessionRecords",
     );
-    for (const [index, recordValue] of sessionRecords.entries()) {
-      const record = assertObject(recordValue, `sessionRecords[${index}]`);
-      const address = new WasmProtocolAddress(
-        assertString(record.addressName, `sessionRecords[${index}].addressName`),
-        assertInteger(record.deviceId, `sessionRecords[${index}].deviceId`, 1, 127),
-      );
-      importedAddresses.push(address);
-      await sessionStore.import_session(
-        address,
-        base64ToBytes(assertString(record.record, `sessionRecords[${index}].record`)),
-      );
-    }
   } catch (error) {
     identityStore.free();
     sessionStore.free();
@@ -447,6 +553,106 @@ async function createSenderRuntimeState(senderMaterial) {
       identity.free();
     },
   };
+}
+
+async function createReceiverRuntimeState(receiverMaterial) {
+  assertObject(receiverMaterial, "receiverMaterial");
+  const privateKeyMaterial = assertObject(
+    receiverMaterial.privateKeyMaterial,
+    "receiverMaterial.privateKeyMaterial",
+  );
+  const identity = restoreIdentityKeyPair(receiverMaterial, privateKeyMaterial);
+  const identityStore = new WasmInMemIdentityKeyStore(
+    identity,
+    assertInteger(receiverMaterial.registrationId, "receiverMaterial.registrationId", 1, 0x7fffffff),
+  );
+  const sessionStore = new WasmInMemSessionStore();
+  const preKeyStore = new WasmInMemPreKeyStore();
+  const signedPreKeyStore = new WasmInMemSignedPreKeyStore();
+  const kyberPreKeyStore = new WasmInMemKyberPreKeyStore();
+  const importedAddresses = [];
+
+  try {
+    await importSessionRecords(
+      privateKeyMaterial.sessionRecords,
+      sessionStore,
+      importedAddresses,
+      "receiverMaterial.privateKeyMaterial.sessionRecords",
+    );
+    await importPrivatePreKeyRecords(
+      privateKeyMaterial.oneTimePreKeyRecords,
+      "receiverMaterial.privateKeyMaterial.oneTimePreKeyRecords",
+      (prekeyId, recordBytes) => preKeyStore.import_pre_key(prekeyId, recordBytes),
+    );
+    await importPrivatePreKeyRecords(
+      privateKeyMaterial.signedPreKeyRecords,
+      "receiverMaterial.privateKeyMaterial.signedPreKeyRecords",
+      (prekeyId, recordBytes) => signedPreKeyStore.import_signed_pre_key(prekeyId, recordBytes),
+    );
+    await importPrivatePreKeyRecords(
+      privateKeyMaterial.kyberPreKeyRecords,
+      "receiverMaterial.privateKeyMaterial.kyberPreKeyRecords",
+      (prekeyId, recordBytes) => kyberPreKeyStore.import_kyber_pre_key(prekeyId, recordBytes),
+    );
+  } catch (error) {
+    for (const address of importedAddresses) {
+      address.free();
+    }
+    kyberPreKeyStore.free();
+    signedPreKeyStore.free();
+    preKeyStore.free();
+    sessionStore.free();
+    identityStore.free();
+    identity.free();
+    throw error;
+  }
+
+  return {
+    identity,
+    identityStore,
+    sessionStore,
+    preKeyStore,
+    signedPreKeyStore,
+    kyberPreKeyStore,
+    free() {
+      for (const address of importedAddresses) {
+        address.free();
+      }
+      kyberPreKeyStore.free();
+      signedPreKeyStore.free();
+      preKeyStore.free();
+      sessionStore.free();
+      identityStore.free();
+      identity.free();
+    },
+  };
+}
+
+async function importSessionRecords(records, sessionStore, importedAddresses, label) {
+  const sessionRecords = assertOptionalArray(records, label);
+  for (const [index, recordValue] of sessionRecords.entries()) {
+    const record = assertObject(recordValue, `${label}[${index}]`);
+    const address = new WasmProtocolAddress(
+      assertString(record.addressName, `${label}[${index}].addressName`),
+      assertInteger(record.deviceId, `${label}[${index}].deviceId`, 1, 127),
+    );
+    importedAddresses.push(address);
+    await sessionStore.import_session(
+      address,
+      base64ToBytes(assertString(record.record, `${label}[${index}].record`)),
+    );
+  }
+}
+
+async function importPrivatePreKeyRecords(records, label, importRecord) {
+  const prekeyRecords = assertOptionalArray(records, label);
+  for (const [index, recordValue] of prekeyRecords.entries()) {
+    const record = assertObject(recordValue, `${label}[${index}]`);
+    await importRecord(
+      assertInteger(record.prekeyId, `${label}[${index}].prekeyId`, 1, 0x00ffffff),
+      base64ToBytes(assertString(record.record, `${label}[${index}].record`)),
+    );
+  }
 }
 
 function restoreIdentityKeyPair(senderMaterial, privateKeyMaterial) {
@@ -503,6 +709,128 @@ function updateSenderMaterialAfterEncrypt(senderMaterial, update) {
   );
   updatedMaterial.privateKeyMaterial = privateKeyMaterial;
   return updatedMaterial;
+}
+
+async function updateRecipientMaterialAfterDecrypt(recipientMaterial, receiverState, update) {
+  const updatedMaterial = cloneJson(recipientMaterial);
+  const privateKeyMaterial = {
+    ...(isObject(updatedMaterial.privateKeyMaterial)
+      ? updatedMaterial.privateKeyMaterial
+      : {}),
+  };
+  privateKeyMaterial.sessionRecords = upsertAddressedRecord(
+    privateKeyMaterial.sessionRecords,
+    {
+      addressName: update.senderAddressName,
+      deviceId: update.senderProtocolDeviceId,
+      record: update.sessionRecordBase64,
+    },
+    "record",
+  );
+  if (update.senderIdentityKeyPublic) {
+    privateKeyMaterial.trustedIdentities = upsertAddressedRecord(
+      privateKeyMaterial.trustedIdentities,
+      {
+        addressName: update.senderAddressName,
+        deviceId: update.senderProtocolDeviceId,
+        publicKey: update.senderIdentityKeyPublic,
+      },
+      "publicKey",
+    );
+  }
+  privateKeyMaterial.oneTimePreKeyRecords = await exportPrivatePreKeyRecords(
+    privateKeyMaterial.oneTimePreKeyRecords,
+    "oneTimePreKeyRecords",
+    (prekeyId) => receiverState.preKeyStore.export_pre_key(prekeyId),
+  );
+  privateKeyMaterial.oneTimePreKeyRecord = privateKeyMaterial.oneTimePreKeyRecords[0]?.record;
+  privateKeyMaterial.signedPreKeyRecords = await exportPrivatePreKeyRecords(
+    privateKeyMaterial.signedPreKeyRecords,
+    "signedPreKeyRecords",
+    (prekeyId) => receiverState.signedPreKeyStore.export_signed_pre_key(prekeyId),
+  );
+  privateKeyMaterial.signedPreKeyRecord =
+    privateKeyMaterial.signedPreKeyRecords[0]?.record ?? privateKeyMaterial.signedPreKeyRecord;
+  privateKeyMaterial.kyberPreKeyRecords = await exportPrivatePreKeyRecords(
+    privateKeyMaterial.kyberPreKeyRecords,
+    "kyberPreKeyRecords",
+    (prekeyId) => receiverState.kyberPreKeyStore.export_kyber_pre_key(prekeyId),
+  );
+  privateKeyMaterial.kyberPreKeyRecord =
+    privateKeyMaterial.kyberPreKeyRecords[0]?.record ?? privateKeyMaterial.kyberPreKeyRecord;
+  updatedMaterial.privateKeyMaterial = privateKeyMaterial;
+  return updatedMaterial;
+}
+
+async function exportPrivatePreKeyRecords(records, label, exportRecord) {
+  const exportedRecords = [];
+  const inputRecords = assertOptionalArray(records, label);
+  for (const [index, recordValue] of inputRecords.entries()) {
+    const record = assertObject(recordValue, `${label}[${index}]`);
+    const prekeyId = assertInteger(record.prekeyId, `${label}[${index}].prekeyId`, 1, 0x00ffffff);
+    const exported = await exportRecord(prekeyId);
+    if (!exported) continue;
+    exportedRecords.push({
+      ...record,
+      prekeyId,
+      record: bytesToBase64(exported),
+    });
+  }
+  return exportedRecords;
+}
+
+function resolveKnownRecipientDevice(senderMaterial, input) {
+  const privateKeyMaterial = isObject(senderMaterial.privateKeyMaterial)
+    ? senderMaterial.privateKeyMaterial
+    : {};
+  const knownRecipientDevices = assertOptionalArray(
+    privateKeyMaterial.knownRecipientDevices,
+    "senderMaterial.privateKeyMaterial.knownRecipientDevices",
+  );
+  const recipientDeviceId = optionalString(input.recipientDeviceId);
+  const recipientAddressName = optionalString(input.recipientAddressName);
+  return knownRecipientDevices.find(
+    (record) =>
+      isObject(record) &&
+      ((recipientDeviceId && record.recipientDeviceId === recipientDeviceId) ||
+        (recipientAddressName && record.addressName === recipientAddressName)),
+  ) ?? null;
+}
+
+function resolveRecipientProtocolDeviceId(senderMaterial, input, recipientAddressName, recipientDeviceId) {
+  if (input.recipientProtocolDeviceId != null) {
+    return assertInteger(input.recipientProtocolDeviceId, "recipientProtocolDeviceId", 1, 127);
+  }
+  if (input.recipientSignalDeviceId != null) {
+    return assertInteger(input.recipientSignalDeviceId, "recipientSignalDeviceId", 1, 127);
+  }
+  const knownRecipient = resolveKnownRecipientDevice(senderMaterial, {
+    recipientAddressName,
+    recipientDeviceId,
+  });
+  if (knownRecipient) {
+    return assertInteger(knownRecipient.signalDeviceId, "knownRecipientDevices[].signalDeviceId", 1, 127);
+  }
+  throw new Error(
+    "encryptKnownSessionEnvelope payload requires recipientProtocolDeviceId or knownRecipientDevices match",
+  );
+}
+
+function resolveSenderProtocolDeviceId(input, envelope) {
+  for (const [label, value] of [
+    ["senderProtocolDeviceId", input.senderProtocolDeviceId],
+    ["envelope.senderProtocolDeviceId", envelope.senderProtocolDeviceId],
+    ["senderSignalDeviceId", input.senderSignalDeviceId],
+    ["envelope.senderSignalDeviceId", envelope.senderSignalDeviceId],
+  ]) {
+    if (value == null) continue;
+    return assertInteger(value, label, 1, 127);
+  }
+  const senderMaterial = isObject(input.senderMaterial) ? input.senderMaterial : null;
+  if (senderMaterial?.signalDeviceId != null) {
+    return assertInteger(senderMaterial.signalDeviceId, "senderMaterial.signalDeviceId", 1, 127);
+  }
+  throw new Error("decryptEnvelope payload requires senderProtocolDeviceId");
 }
 
 function upsertAddressedRecord(records, nextRecord, valueKey) {
@@ -567,6 +895,22 @@ function resolvePlaintextBytes(input) {
     return new TextEncoder().encode(input.plaintext);
   }
   throw new Error("encryptEnvelope payload requires plaintextBase64 or plaintext");
+}
+
+function resolveCiphertextBytes(input, envelope) {
+  if (typeof input.ciphertextBase64 === "string") {
+    return base64ToBytes(input.ciphertextBase64);
+  }
+  if (typeof envelope.ciphertextBase64 === "string") {
+    return base64ToBytes(envelope.ciphertextBase64);
+  }
+  if (typeof input.ciphertext === "string") {
+    return base64ToBytes(input.ciphertext);
+  }
+  if (typeof envelope.ciphertext === "string") {
+    return base64ToBytes(envelope.ciphertext);
+  }
+  throw new Error("decryptEnvelope payload requires ciphertextBase64 or envelope.ciphertextBase64");
 }
 
 function cloneJson(value) {
@@ -635,6 +979,10 @@ function base64ToBytes(value) {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function bytesToUtf8(bytes) {
+  return new TextDecoder().decode(bytes);
 }
 
 function isObject(value) {

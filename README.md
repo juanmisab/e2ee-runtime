@@ -20,9 +20,9 @@ Private apps should communicate with the runtime through JSON `postMessage`
 requests to the Worker artifact. They should not bundle this runtime through a
 direct npm import unless a later legal review explicitly approves that mode.
 
-Current Packet A/B operations include device material generation, public prekey
-bundle export, and first-message `encryptEnvelope`. Message decryption remains a
-later packet.
+Current Packet A/B/C operations include device material generation, public prekey
+bundle export, first-message `encryptEnvelope`, `decryptEnvelope`,
+`exportDeviceState`, and known-session reply encryption.
 
 This project may become Signal Protocol-compatible, but it is not affiliated with
 Signal Messenger LLC, Signal Foundation, Signal Technology Foundation, or the
