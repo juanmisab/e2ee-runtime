@@ -23,6 +23,7 @@ import initWasm, {
   processPreKeyBundle,
   uuid_to_string,
 } from "./signal_wasm.js";
+import { runtimeMetadata } from "./abi.js";
 
 export {
   generateRegistrationId,
@@ -738,8 +739,8 @@ async function exportEncryptedDeviceStateBundle(payload, options) {
     protocol: "e2ee-runtime-recovery-v1",
     mode: options.mode,
     createdAt,
-    runtimeVersion: metadata.runtimeVersion,
-    sourceRepository: metadata.sourceRepository,
+    runtimeVersion: runtimeMetadata.runtimeVersion,
+    sourceRepository: runtimeMetadata.sourceRepository,
     kdf: {
       name: "PBKDF2-SHA-256",
       iterations: 210000,
