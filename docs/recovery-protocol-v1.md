@@ -58,7 +58,7 @@ passkey as the encryption key. Product code must provide the recovery secret.
   "protocol": "e2ee-runtime-recovery-v1",
   "mode": "local_encrypted_transfer",
   "createdAt": "2026-06-24T00:00:00.000Z",
-  "runtimeVersion": "0.1.0-prealpha.6",
+  "runtimeVersion": "0.1.0-prealpha.7",
   "sourceRepository": "https://github.com/juanmisab/e2ee-runtime",
   "kdf": {
     "name": "PBKDF2-SHA-256",

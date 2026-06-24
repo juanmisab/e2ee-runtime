@@ -26,7 +26,7 @@ import initWasm, {
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.6",
+  runtimeVersion: "0.1.0-prealpha.7",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -143,8 +143,8 @@ async function createDeviceMaterial(payload) {
   const signedPreKeyStore = new WasmInMemSignedPreKeyStore();
   const kyberPreKeyStore = new WasmInMemKyberPreKeyStore();
   const preKeys = [];
+  const kyberPreKeys = [];
   let signedPreKey;
-  let kyberPreKey;
 
   try {
     for (const preKey of await generatePreKeys(
@@ -159,11 +159,15 @@ async function createDeviceMaterial(payload) {
       identity,
       signedPreKeyStore,
     );
-    kyberPreKey = await generateKyberPreKey(
-      options.kyberPreKeyId,
-      identity,
-      kyberPreKeyStore,
-    );
+    for (let index = 0; index < options.kyberPreKeyCount; index += 1) {
+      kyberPreKeys.push(
+        await generateKyberPreKey(
+          options.kyberPreKeyStartId + index,
+          identity,
+          kyberPreKeyStore,
+        ),
+      );
+    }
 
     const oneTimePrekeys = preKeys.map((preKey) => ({
       prekeyId: preKey.id,
@@ -178,11 +182,16 @@ async function createDeviceMaterial(payload) {
       publicKey: bytesToBase64(signedPreKey.public_key),
       signature: bytesToBase64(signedPreKey.signature),
     };
-    const kyberPrekey = {
-      prekeyId: kyberPreKey.id,
-      publicKey: bytesToBase64(kyberPreKey.public_key),
-      signature: bytesToBase64(kyberPreKey.signature),
-    };
+    const kyberPrekeys = kyberPreKeys.map((preKey) => ({
+      prekeyId: preKey.id,
+      publicKey: bytesToBase64(preKey.public_key),
+      signature: bytesToBase64(preKey.signature),
+    }));
+    const kyberPreKeyRecords = kyberPreKeys.map((preKey) => ({
+      prekeyId: preKey.id,
+      record: bytesToBase64(preKey.record),
+      timestamp: preKey.timestamp.toString(),
+    }));
     const material = {
       protocol: "signal-v1",
       registrationId: options.registrationId,
@@ -191,7 +200,7 @@ async function createDeviceMaterial(payload) {
       identityKeyPrivate: bytesToBase64(privateKey.serialize()),
       signedPrekey,
       oneTimePrekeys,
-      kyberPrekeys: [kyberPrekey],
+      kyberPrekeys,
       privateKeyMaterial: {
         signalPrivateStateSchemaVersion: 1,
         libsignalPackage: "getmaapp/signal-wasm@0.2.0",
@@ -206,14 +215,8 @@ async function createDeviceMaterial(payload) {
         ],
         oneTimePreKeyRecord: oneTimePreKeyRecords[0]?.record,
         oneTimePreKeyRecords,
-        kyberPreKeyRecord: bytesToBase64(kyberPreKey.record),
-        kyberPreKeyRecords: [
-          {
-            prekeyId: kyberPreKey.id,
-            record: bytesToBase64(kyberPreKey.record),
-            timestamp: kyberPreKey.timestamp.toString(),
-          },
-        ],
+        kyberPreKeyRecord: kyberPreKeyRecords[0]?.record,
+        kyberPreKeyRecords,
         sessionRecords: [],
         trustedIdentities: [],
         knownRecipientDevices: [],
@@ -228,8 +231,10 @@ async function createDeviceMaterial(payload) {
     for (const preKey of preKeys) {
       preKey.free();
     }
+    for (const preKey of kyberPreKeys) {
+      preKey.free();
+    }
     signedPreKey?.free();
-    kyberPreKey?.free();
     preKeyStore.free();
     signedPreKeyStore.free();
     kyberPreKeyStore.free();
@@ -780,10 +785,16 @@ function normalizeCreateDeviceMaterialPayload(payload) {
       input.oneTimePreKeyCount == null
         ? 10
         : assertInteger(input.oneTimePreKeyCount, "oneTimePreKeyCount", 1, 500),
-    kyberPreKeyId:
-      input.kyberPreKeyId == null
-        ? 1
-        : assertInteger(input.kyberPreKeyId, "kyberPreKeyId", 1, 0x00ffffff),
+    kyberPreKeyStartId:
+      input.kyberPreKeyStartId == null
+        ? input.kyberPreKeyId == null
+          ? 1
+          : assertInteger(input.kyberPreKeyId, "kyberPreKeyId", 1, 0x00ffffff)
+        : assertInteger(input.kyberPreKeyStartId, "kyberPreKeyStartId", 1, 0x00ffffff),
+    kyberPreKeyCount:
+      input.kyberPreKeyCount == null
+        ? 10
+        : assertInteger(input.kyberPreKeyCount, "kyberPreKeyCount", 1, 500),
   };
 }
 
