@@ -9,6 +9,12 @@ This repo is intended to produce a versioned static Worker artifact:
 
 ```text
 /e2ee-runtime/v1/runtime-worker.js
+/e2ee-runtime/v1/runtime-core.js
+/e2ee-runtime/v1/abi.js
+/e2ee-runtime/v1/ops/device.js
+/e2ee-runtime/v1/ops/envelopes.js
+/e2ee-runtime/v1/ops/attachments.js
+/e2ee-runtime/v1/ops/recovery.js
 /e2ee-runtime/v1/runtime.wasm
 /e2ee-runtime/v1/LICENSE
 /e2ee-runtime/v1/NOTICE
@@ -19,6 +25,9 @@ This repo is intended to produce a versioned static Worker artifact:
 Private apps should communicate with the runtime through JSON `postMessage`
 requests to the Worker artifact. They should not bundle this runtime through a
 direct npm import unless a later legal review explicitly approves that mode.
+`runtime-worker.js` is the small Worker entrypoint; domain operations live in
+the staged `ops/*.js` modules and shared libsignal/WASM helpers live in
+`runtime-core.js`.
 
 Current Packet A/B/C operations include device material generation, public prekey
 bundle export, first-message `encryptEnvelope`, `decryptEnvelope`,

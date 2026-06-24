@@ -9,6 +9,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const upstreamPkg = path.join(repoRoot, "third_party/getmaapp-signal-wasm/pkg");
 const workerSource = path.join(repoRoot, "src/worker/runtime-worker.js");
 const artifactDir = path.join(repoRoot, "public/e2ee-runtime/v1");
+const workerModuleFiles = [
+  "abi.js",
+  "runtime-core.js",
+  "ops/attachments.js",
+  "ops/device.js",
+  "ops/envelopes.js",
+  "ops/recovery.js",
+];
 
 const sourceText = `# E2EE Runtime Source Offer
 
@@ -24,6 +32,14 @@ AGPL-3.0-only
 This artifact is built from the complete source tree in this public repository.
 The Worker source of truth is:
 src/worker/runtime-worker.js
+
+The Worker runtime modules staged with the artifact are:
+src/worker/abi.js
+src/worker/runtime-core.js
+src/worker/ops/device.js
+src/worker/ops/envelopes.js
+src/worker/ops/attachments.js
+src/worker/ops/recovery.js
 
 The JSON ABI and operation contracts are documented in:
 src/worker/abi.ts
@@ -79,8 +95,12 @@ the Signal app.
 `;
 
 await mkdir(artifactDir, { recursive: true });
+await mkdir(path.join(artifactDir, "ops"), { recursive: true });
 
 await copyFile(workerSource, path.join(artifactDir, "runtime-worker.js"));
+for (const file of workerModuleFiles) {
+  await copyFile(path.join(repoRoot, "src/worker", file), path.join(artifactDir, file));
+}
 await copyFile(path.join(upstreamPkg, "signal_wasm.js"), path.join(artifactDir, "signal_wasm.js"));
 await copyFile(path.join(upstreamPkg, "signal_wasm_bg.wasm"), path.join(artifactDir, "runtime.wasm"));
 await copyFile(path.join(repoRoot, "LICENSE"), path.join(artifactDir, "LICENSE"));
@@ -89,6 +109,7 @@ await writeFile(path.join(artifactDir, "SOURCE.txt"), sourceText, "utf8");
 
 const filesToHash = [
   "runtime-worker.js",
+  ...workerModuleFiles,
   "signal_wasm.js",
   "runtime.wasm",
   "LICENSE",

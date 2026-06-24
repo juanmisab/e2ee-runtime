@@ -33,6 +33,17 @@ Current public artifact path:
 public/e2ee-runtime/v1/runtime-worker.js
 ```
 
+The Worker entrypoint imports staged public modules:
+
+```text
+public/e2ee-runtime/v1/abi.js
+public/e2ee-runtime/v1/runtime-core.js
+public/e2ee-runtime/v1/ops/device.js
+public/e2ee-runtime/v1/ops/envelopes.js
+public/e2ee-runtime/v1/ops/attachments.js
+public/e2ee-runtime/v1/ops/recovery.js
+```
+
 Current pre-alpha Worker operations:
 
 - `runtimeMetadata`

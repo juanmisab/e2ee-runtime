@@ -4,8 +4,32 @@
   "license": "AGPL-3.0-only",
   "hashes": {
     "runtime-worker.js": {
-      "sha256": "9a94ed5753143cc31dab887af0290e3ca185cf0351eea9a7f14b5f19d6e54592",
-      "bytes": 60386
+      "sha256": "6d30d403e91f482ab34d6018a8357ee2ec7c8f12ea1caa7914f9901b37cd8420",
+      "bytes": 4150
+    },
+    "abi.js": {
+      "sha256": "1ec83971dd22167b2bd9f3ba416cea26cb16039f61a66fa79af8ba40dfb48a7a",
+      "bytes": 553
+    },
+    "runtime-core.js": {
+      "sha256": "2d3cdcd33e3b7e591fd95ddcc958f2efc362bb198e007636799e9f7d5df3bf6a",
+      "bytes": 57225
+    },
+    "ops/attachments.js": {
+      "sha256": "723a8d6835f3ff4704ba9b738b5dc033858b8cb912d71597d3da90b9f83cc8b4",
+      "bytes": 80
+    },
+    "ops/device.js": {
+      "sha256": "d160e7711328f33b322071e921d98ea2b6a9136b21a77bd1a255271cde26b8ad",
+      "bytes": 155
+    },
+    "ops/envelopes.js": {
+      "sha256": "1ca00019c9895a54b43f14f96f239f5ed2f0f34bbc95a7fc71efe181581ecce2",
+      "bytes": 107
+    },
+    "ops/recovery.js": {
+      "sha256": "d00e966648ea6cf4eb2d8fa403077852f52c7cd85d792a23f57710502bff82e7",
+      "bytes": 164
     },
     "signal_wasm.js": {
       "sha256": "35a82f011cfa75cbf6f537bf327c909fa4646118129f4caa5f942ebe601f65d0",
@@ -24,8 +48,8 @@
       "bytes": 1059
     },
     "SOURCE.txt": {
-      "sha256": "d35fb6bedc48d0f290fa0fadc34d558d9cdf28d1a98769082dcd6202224a2741",
-      "bytes": 2380
+      "sha256": "98ae89508d6808f443b3ba3373919516350989c26675ae253c069eafedea5b1a",
+      "bytes": 2593
     }
   }
 }

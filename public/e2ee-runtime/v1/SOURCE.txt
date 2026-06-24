@@ -13,6 +13,14 @@ This artifact is built from the complete source tree in this public repository.
 The Worker source of truth is:
 src/worker/runtime-worker.js
 
+The Worker runtime modules staged with the artifact are:
+src/worker/abi.js
+src/worker/runtime-core.js
+src/worker/ops/device.js
+src/worker/ops/envelopes.js
+src/worker/ops/attachments.js
+src/worker/ops/recovery.js
+
 The JSON ABI and operation contracts are documented in:
 src/worker/abi.ts
 src/worker/ops/device.ts
