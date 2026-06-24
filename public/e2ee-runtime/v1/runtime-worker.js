@@ -1,7 +1,13 @@
 import initWasm, {
   WasmIdentityKeyPair,
+  WasmInMemKyberPreKeyStore,
+  WasmInMemPreKeyStore,
+  WasmInMemSignedPreKeyStore,
   WasmPrivateKey,
+  generateKyberPreKey,
+  generatePreKeys,
   generateRegistrationId,
+  generateSignedPreKey,
   generate_random_bytes,
   generate_uuid,
   message_type_pre_key,
@@ -12,7 +18,7 @@ import initWasm, {
 
 const metadata = {
   runtimeName: "e2ee-runtime",
-  runtimeVersion: "0.1.0-prealpha.1",
+  runtimeVersion: "0.1.0-prealpha.2",
   artifactPath: "/e2ee-runtime/v1/runtime-worker.js",
   implementation: "getmaapp-signal-wasm/libsignal",
   license: "AGPL-3.0-only",
@@ -64,6 +70,10 @@ async function handleRequest(message) {
         return ok(requestId, uuidResult(generate_uuid()));
       case "generateIdentityKeyPair":
         return ok(requestId, generateIdentityKeyPair());
+      case "createDeviceMaterial":
+        return ok(requestId, await createDeviceMaterial(message.payload));
+      case "exportPrekeyBundle":
+        return ok(requestId, exportPrekeyBundle(message.payload));
       default:
         throw new Error(`Unsupported runtime op: ${message.op}`);
     }
@@ -96,6 +106,185 @@ function generateIdentityKeyPair() {
   }
 }
 
+async function createDeviceMaterial(payload) {
+  const options = normalizeCreateDeviceMaterialPayload(payload);
+  const privateKey = WasmPrivateKey.generate();
+  const publicKey = privateKey.getPublicKey();
+  const identity = new WasmIdentityKeyPair(publicKey, privateKey);
+  const preKeyStore = new WasmInMemPreKeyStore();
+  const signedPreKeyStore = new WasmInMemSignedPreKeyStore();
+  const kyberPreKeyStore = new WasmInMemKyberPreKeyStore();
+  const preKeys = [];
+  let signedPreKey;
+  let kyberPreKey;
+
+  try {
+    for (const preKey of await generatePreKeys(
+      options.oneTimePreKeyStartId,
+      options.oneTimePreKeyCount,
+      preKeyStore,
+    )) {
+      preKeys.push(preKey);
+    }
+    signedPreKey = await generateSignedPreKey(
+      options.signedPreKeyId,
+      identity,
+      signedPreKeyStore,
+    );
+    kyberPreKey = await generateKyberPreKey(
+      options.kyberPreKeyId,
+      identity,
+      kyberPreKeyStore,
+    );
+
+    const oneTimePrekeys = preKeys.map((preKey) => ({
+      prekeyId: preKey.id,
+      publicKey: bytesToBase64(preKey.public_key),
+    }));
+    const oneTimePreKeyRecords = preKeys.map((preKey) => ({
+      prekeyId: preKey.id,
+      record: bytesToBase64(preKey.record),
+    }));
+    const signedPrekey = {
+      prekeyId: signedPreKey.id,
+      publicKey: bytesToBase64(signedPreKey.public_key),
+      signature: bytesToBase64(signedPreKey.signature),
+    };
+    const kyberPrekey = {
+      prekeyId: kyberPreKey.id,
+      publicKey: bytesToBase64(kyberPreKey.public_key),
+      signature: bytesToBase64(kyberPreKey.signature),
+    };
+    const material = {
+      protocol: "signal-v1",
+      registrationId: options.registrationId,
+      signalDeviceId: options.signalDeviceId,
+      identityKeyPublic: bytesToBase64(publicKey.serialize()),
+      identityKeyPrivate: bytesToBase64(privateKey.serialize()),
+      signedPrekey,
+      oneTimePrekeys,
+      kyberPrekeys: [kyberPrekey],
+      privateKeyMaterial: {
+        signalPrivateStateSchemaVersion: 1,
+        libsignalPackage: "getmaapp/signal-wasm@0.2.0",
+        identityKeyPairRecord: bytesToBase64(identity.serialize()),
+        signedPreKeyRecord: bytesToBase64(signedPreKey.record),
+        signedPreKeyRecords: [
+          {
+            prekeyId: signedPreKey.id,
+            record: bytesToBase64(signedPreKey.record),
+            timestamp: signedPreKey.timestamp.toString(),
+          },
+        ],
+        oneTimePreKeyRecord: oneTimePreKeyRecords[0]?.record,
+        oneTimePreKeyRecords,
+        kyberPreKeyRecord: bytesToBase64(kyberPreKey.record),
+        kyberPreKeyRecords: [
+          {
+            prekeyId: kyberPreKey.id,
+            record: bytesToBase64(kyberPreKey.record),
+            timestamp: kyberPreKey.timestamp.toString(),
+          },
+        ],
+        sessionRecords: [],
+        trustedIdentities: [],
+        knownRecipientDevices: [],
+      },
+    };
+
+    return {
+      material,
+      prekeyBundle: createPrekeyBundleFromMaterial(material),
+    };
+  } finally {
+    for (const preKey of preKeys) {
+      preKey.free();
+    }
+    signedPreKey?.free();
+    kyberPreKey?.free();
+    preKeyStore.free();
+    signedPreKeyStore.free();
+    kyberPreKeyStore.free();
+    identity.free();
+    publicKey.free();
+    privateKey.free();
+  }
+}
+
+function exportPrekeyBundle(payload) {
+  const material = resolveDeviceMaterial(payload);
+  return createPrekeyBundleFromMaterial(material);
+}
+
+function createPrekeyBundleFromMaterial(material) {
+  assertObject(material, "device material");
+  const signedPrekey = assertObject(material.signedPrekey, "signedPrekey");
+  const oneTimePrekeys = assertOptionalArray(material.oneTimePrekeys, "oneTimePrekeys");
+  const kyberPrekeys = assertOptionalArray(material.kyberPrekeys, "kyberPrekeys");
+
+  return {
+    protocol: assertString(material.protocol, "protocol"),
+    registrationId: assertInteger(material.registrationId, "registrationId", 1, 0x7fffffff),
+    identityKeyPublic: assertString(material.identityKeyPublic, "identityKeyPublic"),
+    signedPrekey: {
+      prekeyId: assertInteger(signedPrekey.prekeyId, "signedPrekey.prekeyId", 1, 0x00ffffff),
+      publicKey: assertString(signedPrekey.publicKey, "signedPrekey.publicKey"),
+      signature: assertString(signedPrekey.signature, "signedPrekey.signature"),
+    },
+    signalDeviceId: assertInteger(material.signalDeviceId, "signalDeviceId", 1, 127),
+    oneTimePrekeys: oneTimePrekeys.map((preKey, index) => {
+      const record = assertObject(preKey, `oneTimePrekeys[${index}]`);
+      return {
+        prekeyId: assertInteger(record.prekeyId, `oneTimePrekeys[${index}].prekeyId`, 1, 0x00ffffff),
+        publicKey: assertString(record.publicKey, `oneTimePrekeys[${index}].publicKey`),
+      };
+    }),
+    kyberPrekeys: kyberPrekeys.map((preKey, index) => {
+      const record = assertObject(preKey, `kyberPrekeys[${index}]`);
+      return {
+        prekeyId: assertInteger(record.prekeyId, `kyberPrekeys[${index}].prekeyId`, 1, 0x00ffffff),
+        publicKey: assertString(record.publicKey, `kyberPrekeys[${index}].publicKey`),
+        signature: assertString(record.signature, `kyberPrekeys[${index}].signature`),
+      };
+    }),
+  };
+}
+
+function normalizeCreateDeviceMaterialPayload(payload) {
+  const input = isObject(payload) ? payload : {};
+  return {
+    registrationId:
+      input.registrationId == null
+        ? generateRegistrationId()
+        : assertInteger(input.registrationId, "registrationId", 1, 0x7fffffff),
+    signalDeviceId:
+      input.signalDeviceId == null
+        ? 1
+        : assertInteger(input.signalDeviceId, "signalDeviceId", 1, 127),
+    signedPreKeyId:
+      input.signedPreKeyId == null
+        ? 1
+        : assertInteger(input.signedPreKeyId, "signedPreKeyId", 1, 0x00ffffff),
+    oneTimePreKeyStartId:
+      input.oneTimePreKeyStartId == null
+        ? 2
+        : assertInteger(input.oneTimePreKeyStartId, "oneTimePreKeyStartId", 1, 0x00ffffff),
+    oneTimePreKeyCount:
+      input.oneTimePreKeyCount == null
+        ? 10
+        : assertInteger(input.oneTimePreKeyCount, "oneTimePreKeyCount", 1, 500),
+    kyberPreKeyId:
+      input.kyberPreKeyId == null
+        ? 1
+        : assertInteger(input.kyberPreKeyId, "kyberPreKeyId", 1, 0x00ffffff),
+  };
+}
+
+function resolveDeviceMaterial(payload) {
+  const input = assertObject(payload, "payload");
+  return input.material ?? input.deviceMaterial ?? input;
+}
+
 function uuidResult(bytes) {
   return {
     uuid: uuid_to_string(bytes),
@@ -106,6 +295,35 @@ function uuidResult(bytes) {
 function assertByteLength(value) {
   if (!Number.isInteger(value) || value < 1 || value > 4096) {
     throw new Error("payload.length must be an integer from 1 to 4096");
+  }
+  return value;
+}
+
+function assertInteger(value, label, min, max) {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${label} must be an integer from ${min} to ${max}`);
+  }
+  return value;
+}
+
+function assertString(value, label) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
+function assertObject(value, label) {
+  if (!isObject(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+
+function assertOptionalArray(value, label) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
   }
   return value;
 }

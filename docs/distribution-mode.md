@@ -42,6 +42,8 @@ Current pre-alpha Worker operations:
 - `generateRandomBytes`
 - `generateUuid`
 - `generateIdentityKeyPair`
+- `createDeviceMaterial`
+- `exportPrekeyBundle`
 
 Forbidden private-app use:
 

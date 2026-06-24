@@ -33,6 +33,7 @@ const requiredText = {
     "pre-alpha AGPL runtime artifact",
     "/e2ee-runtime/v1/runtime-worker.js",
     "JSON `postMessage`",
+    "Packet A operations",
     "not affiliated",
   ],
   "package.json": [
@@ -56,11 +57,15 @@ const requiredText = {
     "signal_wasm_bg.wasm",
     "e0b125b21d0c663b8d74021fabb63a419ee3a1b5c1dd2a314d44b129b50063bd",
     "node scripts/stage-web-artifact.mjs",
+    "createDeviceMaterial",
+    "exportPrekeyBundle",
   ],
   "docs/distribution-mode.md": [
     "web_worker_url_artifact",
     "JSON ABI messages",
     "new Worker",
+    "createDeviceMaterial",
+    "exportPrekeyBundle",
     "expo_agpl_runtime_blocked_until_legal_review",
   ],
   "docs/license-plan.md": [
@@ -102,6 +107,8 @@ const requiredText = {
     "JSON postMessage ABI only",
     "runtimeMetadata",
     "generateIdentityKeyPair",
+    "createDeviceMaterial",
+    "exportPrekeyBundle",
   ],
   "public/e2ee-runtime/v1/signal_wasm.js": [
     "signal_wasm_bg.wasm",

@@ -105,6 +105,22 @@ public/e2ee-runtime/v1/runtime-worker.js
 The staged artifact includes `runtime-worker.js`, the generated wasm-bindgen JS,
 `runtime.wasm`, `LICENSE`, `NOTICE`, `SOURCE.txt`, and `hashes.json`.
 
+Packet A Worker operations added after the initial artifact:
+
+- `createDeviceMaterial`
+- `exportPrekeyBundle`
+
+These operations are implemented in the public AGPL Worker artifact and keep
+private-product consumers on the JSON Worker boundary.
+
+Browser Worker smoke:
+
+```text
+createDeviceMaterial: generated registration id, signal device id 7,
+3 one-time prekeys, signed prekey 101, Kyber prekey 301, and private state.
+exportPrekeyBundle: returned a public bundle matching the generated material.
+```
+
 ## Next Step
 
 Connect a private web consumer only through the Worker URL boundary:
