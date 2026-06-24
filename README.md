@@ -2,8 +2,10 @@
 
 Public browser E2EE runtime workbench owned under `juanmisab`.
 
-Status: pre-alpha AGPL runtime artifact. This is a licensing and browser-worker
-integration runway, not a production-reviewed crypto release.
+Status: web AGPL Worker production candidate for the `web_worker_url_artifact`
+distribution mode. The runtime version is still `0.1.0-prealpha.8`; production
+web use requires each consuming deploy to publish the matching source, license,
+and hash records and to avoid direct private-app imports.
 
 This repo is intended to produce a versioned static Worker artifact:
 
@@ -64,5 +66,5 @@ node scripts/check-public-boundary.mjs
 node scripts/stage-web-artifact.mjs
 ```
 
-Do not connect private apps until the static artifact is staged, hashed, and
-reviewed as a Worker URL boundary.
+Private apps may connect only through the staged, hashed Worker URL boundary.
+Do not import this runtime as a private app npm dependency.

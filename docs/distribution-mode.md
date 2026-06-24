@@ -44,7 +44,7 @@ public/e2ee-runtime/v1/ops/attachments.js
 public/e2ee-runtime/v1/ops/recovery.js
 ```
 
-Current pre-alpha Worker operations:
+Current Worker operations in `0.1.0-prealpha.8`:
 
 - `runtimeMetadata`
 - `runtimeReady`

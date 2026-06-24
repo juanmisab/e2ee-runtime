@@ -43,14 +43,26 @@ Completed:
 - `NOTICE` with upstream attribution
 - upstream repo URL and commit SHA recorded
 - upstream copyright and license notices preserved
-
-Still required before a runtime artifact release:
-
 - mark local modifications with date
 - keep source tree, lockfiles, and build scripts together
 - generate `SOURCE.txt` for each artifact version
 - generate `hashes.json` for JS/WASM artifacts
 - document no affiliation with Signal
+
+Current release-candidate status:
+
+- the source/build/license packet exists for `0.1.0-prealpha.8`
+- the staged artifact includes `LICENSE`, `NOTICE`, `SOURCE.txt`, and
+  `hashes.json`
+- `pnpm check` verifies the public boundary and required compliance files
+
+Still required for each production web deploy:
+
+- publish or record the exact public source commit/tag used by the deploy
+- serve the matching artifact license/source/hash files
+- keep the consuming private app on Worker URL plus JSON ABI mode
+- do not use direct private-app npm/static/dynamic import
+- record the consuming deploy smoke and owner release record
 
 ## Package Policy
 
@@ -71,4 +83,5 @@ Future public packages may be:
 @juanmisab/e2ee-wasm
 ```
 
-Do not publish packages until the source and license packet is complete.
+Do not publish packages until a separate package-publishing review exists. The
+approved production path is the static Worker artifact, not npm package import.

@@ -49,7 +49,7 @@ const requiredFiles = [
 
 const requiredText = {
   "README.md": [
-    "pre-alpha AGPL runtime artifact",
+    "web AGPL Worker production candidate",
     "/e2ee-runtime/v1/runtime-worker.js",
     "JSON `postMessage`",
     "Packet A/B/C operations",
@@ -129,6 +129,8 @@ const requiredText = {
     "signalapp/libsignal",
     "Getmaapp Source Import",
     "3a5293905e7eacfad42b0b324665849bdd4c9cdf",
+    "Current release-candidate status",
+    "Still required for each production web deploy",
   ],
   "docs/source-intake-manifest.md": [
     "Port Now",
