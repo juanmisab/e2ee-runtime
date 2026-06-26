@@ -13,6 +13,7 @@ export type AttachmentRecipient = {
   signalDeviceId?: number;
   recipientSignalDeviceId?: number;
   identityKeyPublic?: string;
+  localDeviceKeyWrap?: boolean;
 };
 
 export type EncryptAttachmentPayload = {
@@ -31,13 +32,14 @@ export type EncryptAttachmentPayload = {
 export type AttachmentKeyWrapper = {
   recipientDeviceId: string;
   wrappedKeyCiphertext: string;
-  wrappingAlgorithm: "signal-envelope-key-wrap-v1";
-  signalCiphertextType: number;
-  senderAddress: string;
-  senderProtocolDeviceId: number;
-  recipientAddress: string;
-  recipientProtocolDeviceId: number;
-  prekeyBundleProcessed: boolean;
+  wrappingAlgorithm: "signal-envelope-key-wrap-v1" | "local-device-private-state-v1";
+  nonce?: string;
+  signalCiphertextType?: number;
+  senderAddress?: string;
+  senderProtocolDeviceId?: number;
+  recipientAddress?: string;
+  recipientProtocolDeviceId?: number;
+  prekeyBundleProcessed?: boolean;
 };
 
 export type EncryptAttachmentResult = {
@@ -78,4 +80,3 @@ export type DecryptAttachmentResult = {
   plaintextBase64: string;
   updatedRecipientMaterial: DeviceMaterial;
 };
-

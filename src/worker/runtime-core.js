@@ -25,6 +25,8 @@ import initWasm, {
 } from "./signal_wasm.js";
 import { runtimeMetadata } from "./abi.js";
 
+const LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM = "local-device-private-state-v1";
+
 export {
   generateRegistrationId,
   generate_random_bytes,
@@ -581,6 +583,16 @@ export async function encryptAttachment(payload) {
           : isObject(recipient.recipientBundle)
             ? recipient.recipientBundle
             : null;
+    if (recipient.localDeviceKeyWrap === true) {
+      keyWrappers.push(
+        await encryptLocalDeviceAttachmentKeyWrapper({
+          senderMaterial,
+          recipientDeviceId,
+          attachmentKey,
+        }),
+      );
+      continue;
+    }
     const wrappedKey = await encryptRuntimeEnvelope(
       {
         senderMaterial: updatedSenderMaterial,
@@ -659,40 +671,52 @@ export async function decryptAttachment(payload) {
     optionalString(input.deviceId);
   const wrapper = selectAttachmentKeyWrapper(encryptedMetadata.keyWrappers, recipientDeviceId);
   const header = resolveAttachmentWrapperHeader(wrapper);
-  const keyEnvelope = {
-    recipientDeviceId: wrapper.recipientDeviceId,
-    envelopeType: "attachment_key",
-    ciphertext: wrapper.wrappedKeyCiphertext,
-    ciphertextBase64: wrapper.wrappedKeyCiphertext,
-    signalCiphertextType: assertInteger(
-      header.signalCiphertextType,
-      "attachment wrapper signalCiphertextType",
-      1,
-      255,
-    ),
-    senderAddress: assertString(header.senderAddress, "attachment wrapper senderAddress"),
-    senderProtocolDeviceId: assertInteger(
-      header.senderProtocolDeviceId,
-      "attachment wrapper senderProtocolDeviceId",
-      1,
-      127,
-    ),
-    recipientAddress: assertString(header.recipientAddress, "attachment wrapper recipientAddress"),
-    recipientProtocolDeviceId: assertInteger(
-      header.recipientProtocolDeviceId,
-      "attachment wrapper recipientProtocolDeviceId",
-      1,
-      127,
-    ),
-    prekeyBundleProcessed: header.prekeyBundleProcessed === true,
-  };
-  const unwrappedKey = await decryptEnvelope({
-    recipientMaterial,
-    envelope: keyEnvelope,
-    senderProtocolDeviceId: keyEnvelope.senderProtocolDeviceId,
-    recipientProtocolDeviceId: keyEnvelope.recipientProtocolDeviceId,
-  });
-  const attachmentKey = base64ToBytes(unwrappedKey.plaintextBase64);
+  let attachmentKey;
+  let updatedRecipientMaterial = recipientMaterial;
+  if (header.wrappingAlgorithm === LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM) {
+    attachmentKey = await decryptLocalDeviceAttachmentKeyWrapper({
+      recipientMaterial,
+      recipientDeviceId: wrapper.recipientDeviceId,
+      wrappedKeyCiphertext: wrapper.wrappedKeyCiphertext,
+      nonce: assertString(header.nonce ?? wrapper.nonce, "attachment wrapper nonce"),
+    });
+  } else {
+    const keyEnvelope = {
+      recipientDeviceId: wrapper.recipientDeviceId,
+      envelopeType: "attachment_key",
+      ciphertext: wrapper.wrappedKeyCiphertext,
+      ciphertextBase64: wrapper.wrappedKeyCiphertext,
+      signalCiphertextType: assertInteger(
+        header.signalCiphertextType,
+        "attachment wrapper signalCiphertextType",
+        1,
+        255,
+      ),
+      senderAddress: assertString(header.senderAddress, "attachment wrapper senderAddress"),
+      senderProtocolDeviceId: assertInteger(
+        header.senderProtocolDeviceId,
+        "attachment wrapper senderProtocolDeviceId",
+        1,
+        127,
+      ),
+      recipientAddress: assertString(header.recipientAddress, "attachment wrapper recipientAddress"),
+      recipientProtocolDeviceId: assertInteger(
+        header.recipientProtocolDeviceId,
+        "attachment wrapper recipientProtocolDeviceId",
+        1,
+        127,
+      ),
+      prekeyBundleProcessed: header.prekeyBundleProcessed === true,
+    };
+    const unwrappedKey = await decryptEnvelope({
+      recipientMaterial,
+      envelope: keyEnvelope,
+      senderProtocolDeviceId: keyEnvelope.senderProtocolDeviceId,
+      recipientProtocolDeviceId: keyEnvelope.recipientProtocolDeviceId,
+    });
+    attachmentKey = base64ToBytes(unwrappedKey.plaintextBase64);
+    updatedRecipientMaterial = unwrappedKey.updatedRecipientMaterial;
+  }
   const contentKeyBytes = await deriveAttachmentContentKeyBytes(attachmentKey);
   const contentKey = await importAttachmentContentKey(contentKeyBytes, ["decrypt"]);
   const associatedData = resolveAttachmentAssociatedData(input, encryptedMetadata);
@@ -710,7 +734,7 @@ export async function decryptAttachment(payload) {
 
   return {
     plaintextBase64: bytesToBase64(plaintextBytes),
-    updatedRecipientMaterial: unwrappedKey.updatedRecipientMaterial,
+    updatedRecipientMaterial,
   };
 }
 
@@ -1514,6 +1538,72 @@ async function deriveAttachmentContentKeyBytes(attachmentKey) {
     return attachmentKey;
   }
   return new Uint8Array(await crypto.subtle.digest("SHA-256", attachmentKey));
+}
+
+async function encryptLocalDeviceAttachmentKeyWrapper(input) {
+  const key = await deriveLocalDeviceAttachmentWrappingKey(
+    input.senderMaterial,
+    input.recipientDeviceId,
+    ["encrypt"],
+  );
+  const nonceBytes = randomBytes(12);
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonceBytes,
+        additionalData: localDeviceAttachmentWrapperAdditionalData(input.recipientDeviceId),
+      },
+      key,
+      input.attachmentKey,
+    ),
+  );
+  return {
+    recipientDeviceId: input.recipientDeviceId,
+    wrappedKeyCiphertext: bytesToBase64(ciphertext),
+    wrappingAlgorithm: LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM,
+    nonce: bytesToBase64(nonceBytes),
+  };
+}
+
+async function decryptLocalDeviceAttachmentKeyWrapper(input) {
+  const key = await deriveLocalDeviceAttachmentWrappingKey(
+    input.recipientMaterial,
+    input.recipientDeviceId,
+    ["decrypt"],
+  );
+  return new Uint8Array(
+    await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: base64ToBytes(input.nonce),
+        additionalData: localDeviceAttachmentWrapperAdditionalData(input.recipientDeviceId),
+      },
+      key,
+      base64ToBytes(input.wrappedKeyCiphertext),
+    ),
+  );
+}
+
+async function deriveLocalDeviceAttachmentWrappingKey(material, recipientDeviceId, usages) {
+  const keyBytes = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      utf8Bytes(
+        [
+          LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM,
+          recipientDeviceId,
+          assertString(material.identityKeyPrivate, "identityKeyPrivate"),
+          JSON.stringify(assertObject(material.privateKeyMaterial, "privateKeyMaterial")),
+        ].join(":"),
+      ),
+    ),
+  );
+  return importAttachmentContentKey(keyBytes, usages);
+}
+
+function localDeviceAttachmentWrapperAdditionalData(recipientDeviceId) {
+  return utf8Bytes(`${LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM}:${recipientDeviceId}`);
 }
 
 async function importAttachmentContentKey(keyBytes, usages) {

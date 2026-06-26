@@ -85,8 +85,11 @@ Attachment operations:
 The Worker exposes pre-alpha attachment encryption and decryption JSON
 operations. Attachment bytes are encrypted inside the Worker with AES-256-GCM.
 The attachment content key is wrapped per recipient device through the existing
-Signal envelope session. Product storage, RLS, entitlement, and UI are consumer
-responsibilities and are not implemented in this public runtime.
+Signal envelope session. For the current local sender device, the content key
+can be wrapped to the local private device state so the sender can reopen its
+own attachments without a Signal self-session. Product storage, RLS,
+entitlement, and UI are consumer responsibilities and are not implemented in
+this public runtime.
 
 Affiliation:
 This project may become Signal Protocol-compatible, but it is not affiliated
