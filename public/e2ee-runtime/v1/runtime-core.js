@@ -1589,17 +1589,21 @@ async function deriveLocalDeviceAttachmentWrappingKey(material, recipientDeviceI
   const keyBytes = new Uint8Array(
     await crypto.subtle.digest(
       "SHA-256",
-      utf8Bytes(
-        [
-          LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM,
-          recipientDeviceId,
-          assertString(material.identityKeyPrivate, "identityKeyPrivate"),
-          JSON.stringify(assertObject(material.privateKeyMaterial, "privateKeyMaterial")),
-        ].join(":"),
-      ),
+      utf8Bytes(localDeviceAttachmentWrappingKeyMaterial(material, recipientDeviceId)),
     ),
   );
   return importAttachmentContentKey(keyBytes, usages);
+}
+
+function localDeviceAttachmentWrappingKeyMaterial(material, recipientDeviceId) {
+  return [
+    LOCAL_DEVICE_ATTACHMENT_KEY_WRAP_ALGORITHM,
+    recipientDeviceId,
+    assertString(material.identityKeyPublic, "identityKeyPublic"),
+    assertString(material.identityKeyPrivate, "identityKeyPrivate"),
+    String(assertInteger(material.registrationId, "registrationId", 1, 0x7fffffff)),
+    String(assertInteger(material.signalDeviceId, "signalDeviceId", 1, 127)),
+  ].join(":");
 }
 
 function localDeviceAttachmentWrapperAdditionalData(recipientDeviceId) {
