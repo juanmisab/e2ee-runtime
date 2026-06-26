@@ -12,7 +12,7 @@ import {
   message_type_sender_key,
   message_type_signal,
   uuidResult,
-} from "./runtime-core.js";
+} from "./runtime-core.js?artifact=0d05ab3e";
 import {
   createDeviceMaterial,
   exportDeviceState,
